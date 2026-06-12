@@ -1,0 +1,22 @@
+{
+  "name": "wizard-duel",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "WizardStrike 1.6 — CS 1.6 style wizard dueling, fully offline",
+  "scripts": {
+    "start": "vite --open",
+    "dev": "vite --open",
+    "build": "vite build",
+    "preview": "vite preview --open",
+    "soak": "node scripts/soak.mjs",
+    "nav-audit": "node scripts/debug-nav.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0",
+    "vite": "^8.0.0"
+  }
+}

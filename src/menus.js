@@ -1,0 +1,558 @@
+// Menus: main, match setup (mode/map/team/character/wand/bots), settings with
+// keybinds + crosshair editor, pause, lock overlay, match end screen.
+import { CHARACTERS, WANDS, TEAM, TEAM_INFO, MAP_LIST, DIFFICULTIES, FORMATS, DISCIPLINES, SPELLS } from './data.js';
+import { MAP_BUILDERS } from './maps/index.js';
+import { bakeRadar } from './mapbuilder.js';
+import { el, clamp } from './utils.js';
+import { BIND_LABELS, keyLabel, DEFAULT_BINDS } from './input.js';
+import { spellIcon } from './hud.js';
+
+const mapPreviewCache = {};
+function mapPreview(mapId) {
+  if (!mapPreviewCache[mapId]) {
+    const built = MAP_BUILDERS[mapId](null);
+    mapPreviewCache[mapId] = bakeRadar(built.world, 256).canvas;
+  }
+  return mapPreviewCache[mapId];
+}
+
+export class Menus {
+  constructor(root, ctx) {
+    this.root = root;
+    this.ctx = ctx; // {settings, audio, input, saveSettings, applySettings, startGame, quitToMenu, resumeGame}
+    this.el = el('div', 'menus', root);
+    this.setup = {
+      mode: 'relic', mapId: 'dust2', team: TEAM.ORDER, charId: 'harry', prefWand: 'holly',
+      botsFriendly: 4, botsEnemy: 5, difficulty: 'normal', format: 'mr8', discipline: 'duelist',
+      aiCustom: { reflex: 50, aim: 50, sense: 50, iq: 50 },
+      ...(ctx.settings.lastSetup || {}),
+    };
+    if (!this.setup.aiCustom) this.setup.aiCustom = { reflex: 50, aim: 50, sense: 50, iq: 50 };
+    this.activePanel = null;
+  }
+
+  click() { this.ctx.audio.ui('click'); }
+
+  clear() {
+    this.el.innerHTML = '';
+    this.el.style.display = 'none';
+    this.activePanel = null;
+  }
+
+  panel(cls) {
+    this.el.innerHTML = '';
+    this.el.style.display = 'flex';
+    const p = el('div', `panel ${cls}`, this.el);
+    this.activePanel = cls;
+    return p;
+  }
+
+  // -------------------------------------------------------------- main menu ---
+  showMain() {
+    const p = this.panel('main-menu');
+    el('div', 'title-glow', p);
+    el('h1', 'game-title', p, 'WIZARDSTRIKE 1.6');
+    el('div', 'game-sub', p, 'Hogwarts duels · Counter-Strike 1.6 rules · fully offline');
+    const btns = el('div', 'main-btns', p);
+    const mk = (label, sub, fn) => {
+      const b = el('button', 'main-btn', btns);
+      el('div', 'mb-label', b, label);
+      el('div', 'mb-sub', b, sub);
+      b.onclick = () => { this.click(); fn(); };
+      return b;
+    };
+    mk('PLAY — CURSED RELIC', 'Round-based 5v5 vs bots. Plant or dispel the Relic.', () => this.showSetup('relic'));
+    mk('DEATHMATCH', 'Free-for-all warm-up. All spells unlocked.', () => this.showSetup('dm'));
+    mk('SETTINGS', 'Mouse, keybinds, crosshair, video, audio.', () => this.showSettings(false));
+    mk('HOW TO PLAY', 'Controls and the rules of engagement.', () => this.showHelp());
+    el('div', 'footer-note', p, 'WASD move · LMB cast · RMB Protego · R recharge · B buy · E plant/defuse · Tab scoreboard');
+  }
+
+  showHelp() {
+    const p = this.panel('help');
+    el('h2', 'panel-title', p, 'HOW TO PLAY');
+    const grid = el('div', 'help-grid', p);
+    const sec = (title, lines) => {
+      const s = el('div', 'help-sec', grid);
+      el('h3', '', s, title);
+      for (const l of lines) el('div', 'help-line', s, l);
+    };
+    sec('Objective', [
+      'Death Eaters attack: carry the Cursed Relic to site A or B and hold E to plant.',
+      'Order defends: eliminate attackers, run the clock, or hold E on a planted Relic to dispel it (Finite Incantatem).',
+      'Win rounds by elimination or the objective. First to 8 rounds wins (sides swap at halftime).',
+    ]);
+    sec('Magic', [
+      'Casting drains mana. Press R to recharge fast (your "reload").',
+      'All spells are projectiles — lead your targets. Hits are locational: head 2x, stomach 1.15x, arm 0.85x, leg 0.7x (leg hits also stumble the victim).',
+      'Spam blooms your spread (watch the crosshair) and kicks your aim up — tap or burst.',
+      'Moving while casting adds spread; stand still, walk (Shift) or crouch for accuracy.',
+      'Charging Avada Kedavra scopes your view in — a wizard sniper rifle.',
+      'Hold RMB for Protego: absorbs enemy spells while draining mana. Raise it at the last instant to PARRY.',
+      'Opposing bolts CLASH and annihilate mid-air — but Avada Kedavra burns through.',
+      'Bolts detonate enemy grenades in flight. Fumos smothers Incendio. Water cures burning.',
+      'Serpensortia conjures a hunting snake — shoot enemy serpents before they strike.',
+      'Your own Bombarda and Incendio can hurt you. Friendly fire is off.',
+    ]);
+    sec('Economy & Loot', [
+      'Earn Galleons from kills (Avada Kedavra pays half), round wins, and objective plays.',
+      'Press B during the buy period to purchase wands, spells, and equipment.',
+      'Dragonhide Vest soaks 30% of hits; Felix Felicis cheats death once; the Portkey channels you home.',
+      'The fallen drop their wand and a piece of kit — walk over loot or press E to take a wand.',
+      'Survive a round and you keep your wand and gear. Die and you re-equip.',
+    ]);
+    sec('Controls', [
+      'WASD move · Space jump · Ctrl crouch · Shift walk silently (no footstep noise)',
+      'LMB cast · RMB Protego · 1-5 / wheel switch spells',
+      'Q potion · C broom (hold direction, Space climbs, Ctrl dives) · F cloak · G apparate · V portkey',
+      'E use / plant / dispel / loot · Tab scoreboard · Esc menu',
+    ]);
+    const back = el('button', 'btn big', p, '← BACK');
+    back.onclick = () => { this.click(); this.showMain(); };
+  }
+
+  // ------------------------------------------------------------ match setup ---
+  showSetup(mode) {
+    this.setup.mode = mode;
+    const p = this.panel('setup');
+    el('h2', 'panel-title', p, mode === 'dm' ? 'DEATHMATCH SETUP' : 'MATCH SETUP');
+    const scroll = el('div', 'setup-scroll', p);
+
+    // --- maps ---
+    const mapRows = [];
+    const mapGroup = (title, group) => {
+      el('h3', 'sec-title', scroll, title);
+      const mapRow = el('div', 'card-row maps', scroll);
+      mapRows.push(mapRow);
+      for (const m of MAP_LIST.filter((m) => m.group === group)) {
+        const c = el('div', `sel-card map${this.setup.mapId === m.id ? ' sel' : ''}`, mapRow);
+        c.dataset.id = m.id;
+        const cv = el('canvas', 'map-preview', c);
+        cv.width = cv.height = 160;
+        cv.getContext('2d').drawImage(mapPreview(m.id), 0, 0, 160, 160);
+        el('div', 'card-name', c, m.name);
+        el('div', 'card-sub', c, m.desc);
+        c.onclick = () => {
+          this.click();
+          this.setup.mapId = m.id;
+          for (const row of mapRows) {
+            row.querySelectorAll('.sel-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === m.id));
+          }
+        };
+      }
+    };
+    mapGroup('BATTLEGROUND — THE CLASSICS', 'classic');
+    mapGroup('BATTLEGROUND — HOGWARTS', 'hogwarts');
+    mapGroup('BATTLEGROUND — THE WIZARDING WORLD', 'world');
+
+    // --- team ---
+    let teamRow = null;
+    if (mode === 'relic') {
+      el('h3', 'sec-title', scroll, 'ALLEGIANCE');
+      teamRow = el('div', 'card-row teams', scroll);
+      for (const t of [TEAM.ORDER, TEAM.DEATH]) {
+        const info = TEAM_INFO[t];
+        const c = el('div', `sel-card team ${t}${this.setup.team === t ? ' sel' : ''}`, teamRow);
+        c.dataset.id = t;
+        el('div', 'card-name', c, info.name);
+        el('div', 'card-sub', c, t === TEAM.DEATH ? 'Attack first: plant the Cursed Relic.' : 'Defend first: hold sites A and B.');
+        c.onclick = () => {
+          this.click();
+          this.setup.team = t;
+          teamRow.querySelectorAll('.sel-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === t));
+        };
+      }
+    }
+
+    // --- characters ---
+    el('h3', 'sec-title', scroll, 'CHAMPION');
+    const charRow = el('div', 'card-row chars', scroll);
+    const statDefs = [
+      ['HP', (c) => c.hp / 120], ['Speed', (c) => (c.speed - 4.2) / 1.6], ['Power', (c) => (c.power - 0.7) / 0.65],
+      ['Cast', (c) => (c.cast - 0.8) / 0.45], ['Mana', (c) => c.mana / 130], ['Regen', (c) => c.regen / 6],
+    ];
+    for (const ch of CHARACTERS) {
+      const c = el('div', `sel-card char${this.setup.charId === ch.id ? ' sel' : ''}`, charRow);
+      c.dataset.id = ch.id;
+      el('div', 'card-name', c, ch.name);
+      el('div', `card-side ${ch.side}`, c, TEAM_INFO[ch.side].short);
+      const stats = el('div', 'char-stats', c);
+      for (const [label, fn] of statDefs) {
+        const row = el('div', 'stat-row', stats);
+        el('span', 'stat-label', row, label);
+        const bar = el('div', 'stat-bar', row);
+        el('div', 'stat-fill', bar).style.width = `${clamp(fn(ch), 0.06, 1) * 100}%`;
+      }
+      el('div', 'char-perk', c, `★ ${ch.perk}`);
+      el('div', 'char-perk-desc', c, ch.perkDesc);
+      if (ch.fav && SPELLS[ch.fav]) el('div', 'char-fav', c, `Favors: ${SPELLS[ch.fav].name} — buys it whenever gold allows`);
+      el('div', 'char-style', c, `Playstyle: ${ch.style}`);
+      c.onclick = () => {
+        this.click();
+        this.setup.charId = ch.id;
+        charRow.querySelectorAll('.sel-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === ch.id));
+      };
+    }
+
+    // --- discipline (your build for the match) ---
+    el('h3', 'sec-title', scroll, 'DISCIPLINE (your school of magic — one passive build)');
+    const discRow = el('div', 'card-row discs', scroll);
+    for (const d of DISCIPLINES) {
+      const c = el('div', `sel-card disc${this.setup.discipline === d.id ? ' sel' : ''}`, discRow);
+      c.dataset.id = d.id;
+      const head = el('div', 'wand-head', c);
+      el('img', 'wand-ico', head).src = spellIcon(d.icon);
+      el('div', 'card-name', c, d.name);
+      el('div', 'card-sub', c, d.desc);
+      c.onclick = () => {
+        this.click();
+        this.setup.discipline = d.id;
+        discRow.querySelectorAll('.sel-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === d.id));
+      };
+    }
+
+    // --- preferred wand ---
+    el('h3', 'sec-title', scroll, 'PREFERRED WAND (you still buy it in-match)');
+    const wandRow = el('div', 'card-row wands', scroll);
+    for (const w of WANDS) {
+      const c = el('div', `sel-card wand${this.setup.prefWand === w.id ? ' sel' : ''}`, wandRow);
+      c.dataset.id = w.id;
+      const head = el('div', 'wand-head', c);
+      el('img', 'wand-ico', head).src = spellIcon('wand');
+      el('div', 'card-name', c, w.name);
+      el('div', 'card-sub', c, w.price === 0 ? 'Free starter' : `${w.price} ɢ`);
+      const stats = el('div', 'char-stats', c);
+      const wd = [['Power', (w.power - 0.7) / 0.65], ['Cast', (w.cast - 0.9) / 0.3], ['Accuracy', (1.6 - w.spread) / 1.1], ['Efficiency', (1.35 - w.manaMult * 0.5) / 0.95]];
+      for (const [label, frac] of wd) {
+        const row = el('div', 'stat-row', stats);
+        el('span', 'stat-label', row, label);
+        const bar = el('div', 'stat-bar', row);
+        el('div', 'stat-fill', bar).style.width = `${clamp(frac, 0.06, 1) * 100}%`;
+      }
+      c.onclick = () => {
+        this.click();
+        this.setup.prefWand = w.id;
+        wandRow.querySelectorAll('.sel-card').forEach((x) => x.classList.toggle('sel', x.dataset.id === w.id));
+      };
+    }
+
+    // --- bots & rules ---
+    el('h3', 'sec-title', scroll, 'OPPOSITION');
+    const opts = el('div', 'opts-grid', scroll);
+    const slider = (label, key, min, max, fmt = (v) => String(v)) => {
+      const row = el('div', 'opt-row', opts);
+      el('label', '', row, label);
+      const inp = el('input', '', row);
+      inp.type = 'range'; inp.min = min; inp.max = max; inp.step = 1;
+      inp.value = this.setup[key];
+      const val = el('span', 'opt-val', row, fmt(this.setup[key]));
+      inp.oninput = () => {
+        this.setup[key] = Number(inp.value);
+        val.textContent = fmt(this.setup[key]);
+      };
+    };
+    slider('Teammate bots', 'botsFriendly', 0, 4);
+    slider('Enemy bots', 'botsEnemy', 1, 5);
+
+    // --- bot brain: preset cards + the four tuning sliders ---
+    el('h3', 'sec-title', scroll, 'BOT BRAIN (presets, or tune the four axes yourself)');
+    const diffRow = el('div', 'card-row diffs', scroll);
+    const diffDesc = el('div', 'diff-desc', scroll, '');
+    const axisDefs = [
+      ['reflex', 'Reflexes', 'reaction time, turn speed, shield reflexes'],
+      ['aim', 'Accuracy', 'flick control, tracking, counter-strafing'],
+      ['sense', 'Awareness', 'vision cone and range, hearing, memory'],
+      ['iq', 'Tactics', 'utility, trades, saves, target priority'],
+    ];
+    const axGrid = el('div', 'opts-grid', scroll);
+    const axInputs = {};
+    const cards = [];
+    const refreshDiff = () => {
+      const cur = DIFFICULTIES.find((d) => d.id === this.setup.difficulty);
+      for (const c of cards) c.classList.toggle('sel', c.dataset.id === this.setup.difficulty);
+      diffDesc.textContent = cur ? cur.desc
+        : 'Custom brain — your slider mix. Drag any slider to shape how human they are.';
+      const axes = cur ? cur.axes : this.setup.aiCustom;
+      for (const [key] of axisDefs) {
+        axInputs[key].inp.value = axes[key];
+        axInputs[key].val.textContent = String(Math.round(axes[key]));
+      }
+    };
+    const mkDiffCard = (id, name, sub) => {
+      const c = el('div', 'sel-card diff', diffRow);
+      c.dataset.id = id;
+      el('div', 'card-name', c, name);
+      el('div', 'card-sub', c, sub);
+      c.onclick = () => {
+        this.click();
+        this.setup.difficulty = id;
+        refreshDiff();
+      };
+      cards.push(c);
+      return c;
+    };
+    for (const d of DIFFICULTIES) mkDiffCard(d.id, d.name, `R${d.axes.reflex} · A${d.axes.aim} · S${d.axes.sense} · T${d.axes.iq}`);
+    mkDiffCard('custom', 'Custom', 'your own slider mix');
+    for (const [key, label, hint] of axisDefs) {
+      const row = el('div', 'opt-row', axGrid);
+      el('label', '', row, label).title = hint;
+      const inp = el('input', '', row);
+      inp.type = 'range'; inp.min = 0; inp.max = 100; inp.step = 1;
+      const val = el('span', 'opt-val', row, '50');
+      axInputs[key] = { inp, val };
+      inp.oninput = () => {
+        // touching a slider means you're tuning: switch to the custom brain
+        if (this.setup.difficulty !== 'custom') {
+          const cur = DIFFICULTIES.find((d) => d.id === this.setup.difficulty);
+          if (cur) this.setup.aiCustom = { ...cur.axes };
+          this.setup.difficulty = 'custom';
+        }
+        this.setup.aiCustom[key] = Number(inp.value);
+        val.textContent = inp.value;
+        refreshDiff();
+      };
+    }
+    refreshDiff();
+
+    if (mode === 'relic') {
+      const fmtRow = el('div', 'opt-row', opts);
+      el('label', '', fmtRow, 'Match length');
+      const fmtSel = el('select', '', fmtRow);
+      for (const f of FORMATS) {
+        const o = el('option', '', fmtSel, f.name);
+        o.value = f.id;
+      }
+      fmtSel.value = this.setup.format;
+      fmtSel.onchange = () => { this.setup.format = fmtSel.value; };
+    }
+
+    const foot = el('div', 'setup-foot', p);
+    const back = el('button', 'btn', foot, '← BACK');
+    back.onclick = () => { this.click(); this.showMain(); };
+    const start = el('button', 'btn big primary', foot, mode === 'dm' ? 'ENTER WARM-UP' : 'START MATCH');
+    start.onclick = () => {
+      this.click();
+      this.ctx.settings.lastSetup = { ...this.setup };
+      this.ctx.saveSettings();
+      this.clear();
+      this.ctx.startGame({ ...this.setup, mode });
+    };
+  }
+
+  // --------------------------------------------------------------- settings ---
+  showSettings(fromPause) {
+    const p = this.panel('settings');
+    const s = this.ctx.settings;
+    el('h2', 'panel-title', p, 'SETTINGS');
+    const scroll = el('div', 'setup-scroll', p);
+
+    const grid = el('div', 'opts-grid wide', scroll);
+    const slider = (label, get, set, min, max, step, fmt) => {
+      const row = el('div', 'opt-row', grid);
+      el('label', '', row, label);
+      const inp = el('input', '', row);
+      inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step;
+      inp.value = get();
+      const val = el('span', 'opt-val', row, fmt(get()));
+      inp.oninput = () => {
+        set(Number(inp.value));
+        val.textContent = fmt(get());
+        this.ctx.applySettings();
+      };
+    };
+    slider('Mouse sensitivity', () => s.sens, (v) => (s.sens = v), 0.2, 4, 0.05, (v) => v.toFixed(2));
+    slider('Field of view', () => s.fov, (v) => (s.fov = v), 70, 110, 1, (v) => `${v}°`);
+    slider('Volume', () => s.volume, (v) => (s.volume = v), 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`);
+    const fpsRow = el('div', 'opt-row', grid);
+    el('label', '', fpsRow, 'FPS counter');
+    const fpsChk = el('input', '', fpsRow);
+    fpsChk.type = 'checkbox';
+    fpsChk.checked = s.showFps;
+    fpsChk.onchange = () => { s.showFps = fpsChk.checked; this.ctx.applySettings(); };
+
+    // crosshair editor
+    el('h3', 'sec-title', scroll, 'CROSSHAIR');
+    const chWrap = el('div', 'ch-editor', scroll);
+    const preview = el('div', 'ch-preview', chWrap);
+    const pv = el('div', 'crosshair pv', preview);
+    const pvParts = {
+      t: el('div', 'ch-line ch-t', pv), b: el('div', 'ch-line ch-b', pv),
+      l: el('div', 'ch-line ch-l', pv), r: el('div', 'ch-line ch-r', pv),
+      dot: el('div', 'ch-dot', pv),
+    };
+    const renderPv = () => {
+      const c = s.crosshair;
+      for (const k of ['t', 'b', 'l', 'r']) {
+        const e = pvParts[k];
+        e.style.background = c.color;
+        const len = `${c.size}px`, th = `${c.thickness}px`, gap = c.gap;
+        if (k === 't') { e.style.width = th; e.style.height = len; e.style.transform = `translate(-50%, ${-gap - c.size}px)`; }
+        if (k === 'b') { e.style.width = th; e.style.height = len; e.style.transform = `translate(-50%, ${gap}px)`; }
+        if (k === 'l') { e.style.width = len; e.style.height = th; e.style.transform = `translate(${-gap - c.size}px, -50%)`; }
+        if (k === 'r') { e.style.width = len; e.style.height = th; e.style.transform = `translate(${gap}px, -50%)`; }
+      }
+      pvParts.dot.style.background = c.color;
+      pvParts.dot.style.display = c.dot ? 'block' : 'none';
+      pvParts.dot.style.width = pvParts.dot.style.height = `${c.thickness + 1}px`;
+    };
+    renderPv();
+    const chOpts = el('div', 'opts-grid', chWrap);
+    const colorRow = el('div', 'opt-row', chOpts);
+    el('label', '', colorRow, 'Color');
+    const colorInp = el('input', '', colorRow);
+    colorInp.type = 'color';
+    colorInp.value = s.crosshair.color;
+    colorInp.oninput = () => { s.crosshair.color = colorInp.value; renderPv(); this.ctx.applySettings(); };
+    const chSlider = (label, key, min, max) => {
+      const row = el('div', 'opt-row', chOpts);
+      el('label', '', row, label);
+      const inp = el('input', '', row);
+      inp.type = 'range'; inp.min = min; inp.max = max; inp.step = 1;
+      inp.value = s.crosshair[key];
+      const val = el('span', 'opt-val', row, String(s.crosshair[key]));
+      inp.oninput = () => {
+        s.crosshair[key] = Number(inp.value);
+        val.textContent = String(s.crosshair[key]);
+        renderPv();
+        this.ctx.applySettings();
+      };
+    };
+    chSlider('Size', 'size', 2, 16);
+    chSlider('Gap', 'gap', 0, 14);
+    chSlider('Thickness', 'thickness', 1, 6);
+    const dotRow = el('div', 'opt-row', chOpts);
+    el('label', '', dotRow, 'Center dot');
+    const dotChk = el('input', '', dotRow);
+    dotChk.type = 'checkbox';
+    dotChk.checked = s.crosshair.dot;
+    dotChk.onchange = () => { s.crosshair.dot = dotChk.checked; renderPv(); this.ctx.applySettings(); };
+
+    // keybinds
+    el('h3', 'sec-title', scroll, 'KEYBINDS (click to rebind, Esc to cancel)');
+    const bindGrid = el('div', 'bind-grid', scroll);
+    const renderBinds = () => {
+      bindGrid.innerHTML = '';
+      for (const action of Object.keys(BIND_LABELS)) {
+        const row = el('div', 'bind-row', bindGrid);
+        el('span', 'bind-label', row, BIND_LABELS[action]);
+        const btn = el('button', 'bind-btn', row, keyLabel(this.ctx.input.binds[action]));
+        btn.onclick = () => {
+          this.click();
+          btn.textContent = '…press a key…';
+          btn.classList.add('listening');
+          this.ctx.input.startRebind(action, () => {
+            s.binds = this.ctx.input.serialize();
+            this.ctx.saveSettings();
+            renderBinds();
+          });
+        };
+      }
+    };
+    renderBinds();
+    const resetB = el('button', 'btn', scroll, 'Reset keybinds to defaults');
+    resetB.onclick = () => {
+      this.click();
+      this.ctx.input.reset();
+      s.binds = this.ctx.input.serialize();
+      this.ctx.saveSettings();
+      renderBinds();
+    };
+
+    const foot = el('div', 'setup-foot', p);
+    const back = el('button', 'btn big', foot, fromPause ? '← BACK TO PAUSE' : '← BACK');
+    back.onclick = () => {
+      this.click();
+      this.ctx.saveSettings();
+      if (fromPause) this.showPause();
+      else this.showMain();
+    };
+  }
+
+  // ------------------------------------------------------------------ pause ---
+  showPause() {
+    const p = this.panel('pause');
+    el('h2', 'panel-title', p, 'PAUSED');
+    const btns = el('div', 'main-btns', p);
+    const mk = (label, fn) => {
+      const b = el('button', 'main-btn slim', btns, label);
+      b.onclick = () => { this.click(); fn(); };
+    };
+    mk('RESUME', () => this.ctx.resumeGame());
+    mk('SETTINGS', () => this.showSettings(true));
+    mk('FORFEIT — MAIN MENU', () => this.ctx.quitToMenu());
+  }
+
+  showLockOverlay(show) {
+    if (show && !this.lockEl) {
+      this.lockEl = el('div', 'lock-overlay', this.root);
+      el('div', 'lock-text', this.lockEl, 'Click to take up your wand');
+      this.lockEl.onclick = () => this.ctx.resumeGame();
+    } else if (!show && this.lockEl) {
+      this.lockEl.remove();
+      this.lockEl = null;
+    }
+  }
+
+  // -------------------------------------------------------------- end screen ---
+  showEnd(game, winner) {
+    const p = this.panel('end-screen');
+    const human = game.human;
+    const humanWon = winner === human.team;
+    const title = game.mode === 'dm'
+      ? 'WARM-UP COMPLETE'
+      : winner === null ? 'DRAW' : humanWon ? 'VICTORY' : 'DEFEAT';
+    el('h1', `end-title ${winner === null ? '' : humanWon ? 'good' : 'bad'}`, p, title);
+    if (game.mode !== 'dm') {
+      el('div', 'end-score', p, `${TEAM_INFO.order.short} ${game.score.order} — ${game.score.death} ${TEAM_INFO.death.short}`);
+      // round strip
+      const strip = el('div', 'round-strip', p);
+      const reasonGlyph = { elim: '☠', time: '⏱', defuse: '✦', explode: '✸' };
+      game.roundHistory.forEach((r, i) => {
+        const cell = el('div', `strip-cell ${r.winner}`, strip, reasonGlyph[r.reason] || '·');
+        cell.title = `Round ${i + 1}`;
+      });
+    } else {
+      el('div', 'end-score', p, '5 minutes of mayhem');
+    }
+    // match MVP: damage + kills + objective work + round-MVP stars
+    const mvpScore = (q) => q.dmgDealt + q.kills * 70 + (q.plants + q.defuses) * 100 + q.mvps * 60;
+    let mvp = game.players[0];
+    for (const q of game.players) if (mvpScore(q) > mvpScore(mvp)) mvp = q;
+    el('div', 'end-mvp', p, `Match MVP: ${mvp.name} — ${mvp.kills} kills, ${Math.round(mvp.dmgDealt)} damage${mvp.mvps ? `, ${mvp.mvps}× round MVP` : ''}`);
+
+    // stats table
+    const wrap = el('div', 'end-tables', p);
+    for (const team of [TEAM.ORDER, TEAM.DEATH]) {
+      const sec = el('div', `sb-team ${team}`, wrap);
+      el('div', 'sb-team-name', sec, TEAM_INFO[team].name);
+      const table = el('table', 'sb-table', sec);
+      const hr = el('tr', '', el('thead', '', table));
+      for (const hcell of ['Player', 'K', 'A', 'D', 'HS', 'DMG', 'OBJ', '★']) el('th', '', hr, hcell);
+      const tb = el('tbody', '', table);
+      for (const q of game.teamPlayers(team).sort((a, b) => mvpScore(b) - mvpScore(a))) {
+        const tr = el('tr', q.isHuman ? 'me' : '', tb);
+        const nameTd = el('td', 'sb-name', tr, q.isHuman ? `★ ${q.char.name}` : q.name);
+        if (!q.isHuman && !q.char.name.includes(q.name)) el('span', 'sb-champ', nameTd, q.char.name.split(' ').pop());
+        el('td', '', tr, String(q.kills));
+        el('td', '', tr, String(q.assists));
+        el('td', '', tr, String(q.deaths));
+        el('td', '', tr, String(q.hsK));
+        el('td', '', tr, String(Math.round(q.dmgDealt)));
+        el('td', '', tr, String(q.plants + q.defuses));
+        el('td', 'sb-star', tr, q.mvps ? '★'.repeat(Math.min(q.mvps, 5)) : '');
+      }
+    }
+
+    const foot = el('div', 'setup-foot', p);
+    const again = el('button', 'btn big primary', foot, 'REMATCH');
+    again.onclick = () => {
+      this.click();
+      this.clear();
+      this.ctx.startGame({ ...this.setup });
+    };
+    const change = el('button', 'btn big', foot, 'CHANGE SETUP');
+    change.onclick = () => { this.click(); this.showSetup(this.setup.mode); };
+    const home = el('button', 'btn', foot, 'MAIN MENU');
+    home.onclick = () => { this.click(); this.showMain(); };
+  }
+}

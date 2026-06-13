@@ -289,6 +289,18 @@ input.onLockChange = (locked) => {
   }
 };
 
+function needsLockOverlay() {
+  return !!game &&
+    !paused &&
+    !game.paused &&
+    !game.over &&
+    input.lockEnabled &&
+    !input.locked &&
+    !hud.buyOpen &&
+    !menus.isVisible() &&
+    game.human?.alive;
+}
+
 // first user gesture unlocks audio
 window.addEventListener('pointerdown', () => audio.ensure(), { once: true });
 
@@ -301,6 +313,8 @@ function loop(now) {
   if (game && !paused) {
     game.update(dt);
   }
+  if (needsLockOverlay()) menus.showLockOverlay(true);
+  else if (!game || paused || game.paused || game.over || input.locked || hud.buyOpen) menus.showLockOverlay(false);
   input.endFrame(); // clear one-shot key edges exactly once per frame
   postfx.update(dt);
   postfx.render();

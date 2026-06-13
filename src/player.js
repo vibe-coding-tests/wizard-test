@@ -583,6 +583,11 @@ export class Player {
     if (this.rig) this.rig.castT = 1;
   }
 
+  onParryAnim() {
+    this.fp?.playParry();
+    if (this.rig) this.rig.parryT = this.rig.parryDur;
+  }
+
   spawnAt(x, z, yaw, world) {
     const y = world.floorY(x, z, 30);
     this.pos.set(x, y + 0.05, z);
@@ -1356,6 +1361,8 @@ export class Rig {
     this.group = g;
     this.phase = 0;
     this.castT = 0;
+    this.parryT = 0;
+    this.parryDur = 0.22;
     this.deadT = -1;
     this.corpse = null;
     this.flashT = 0; this.flashDur = 0.22;
@@ -1440,6 +1447,8 @@ export class Rig {
       this.legL.rotation.x = 0;
       this.armL.rotation.x = -0.08;
       this.armR.rotation.x = -0.35;
+      this.armR.rotation.y = 0;
+      this.armR.rotation.z = 0;
     } else {
       const speedFrac = clamp(p.horizSpeed / 5.4, 0, 1.3);
       this.phase += p.horizSpeed * dt * 1.9;
@@ -1448,8 +1457,14 @@ export class Rig {
       this.legL.rotation.x = -sw;
       this.armL.rotation.x = -sw * 0.6;
       this.castT = Math.max(0, this.castT - dt * 3.5);
+      const parryT = this.parryT > 0 ? clamp(1 - this.parryT / this.parryDur, 0, 1) : 1;
+      const parryK = this.parryT > 0 ? Math.sin(parryT * Math.PI) : 0;
+      this.parryT = Math.max(0, this.parryT - dt);
       const aim = -p.pitch * 0.7 - 1.25 - this.castT * 0.9;
       this.armR.rotation.x = p.disarmT > 0 ? -0.2 : aim;
+      this.armR.rotation.y = parryK * 0.85;
+      this.armR.rotation.z = -parryK * 0.65;
+      if (parryK > 0 && p.disarmT <= 0) this.armR.rotation.x -= parryK * 0.35;
     }
     this.wand.visible = p.disarmT <= 0;
     // crouch: squash
@@ -1605,6 +1620,7 @@ export class FPRig {
     this.anim = { type: spell.kind === 'lob' ? 'lob' : 'flick', t: 0, dur: spell.kind === 'lob' ? 0.45 : 0.22 };
   }
 
+  playParry() { this.anim = { type: 'parry', t: 0, dur: 0.24 }; }
   onSwitch() { this.anim = { type: 'switch', t: 0, dur: 0.25 }; }
   onDisarm() { this.anim = null; this.panicT = 0; }
   onRecharge(dur) { this.anim = { type: 'recharge', t: 0, dur } }
@@ -1650,6 +1666,7 @@ export class FPRig {
       const k = Math.sin(t * Math.PI);
       if (a.type === 'flick') { rx -= k * 0.55; py += k * 0.05; }
       else if (a.type === 'lob') { rx += k * 1.1; pz += k * 0.1; py += k * 0.12; }
+      else if (a.type === 'parry') { rx -= k * 0.9; ry += k * 1.35; rz -= k * 0.8; px += k * 0.18; py += k * 0.09; pz -= k * 0.06; scale = 1 + k * 0.25; }
       else if (a.type === 'switch') { py -= (1 - t) * 0.25; rz += (1 - t) * 0.4; }
       else if (a.type === 'recharge') { rz += t * Math.PI * 2 * 1; scale = 1 + k * 0.6; }
       if (t >= 1) this.anim = null;

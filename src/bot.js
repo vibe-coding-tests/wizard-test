@@ -588,7 +588,7 @@ export class Bot {
       const d = Math.sqrt(d2);
       const maxD = e.cloakT > 0 ? sk.cloakEye : sk.sightDist;
       let visible = false;
-      if (d2 < maxD * maxD && p.blindT <= 0.55) {
+      if (d2 < maxD * maxD && p.blindT <= 0.75) {
         V.subVectors(ep, eye).divideScalar(d || 1);
         const centr = V.dot(fwd);
         if (centr > sk.fovDot || d < 3.2) {
@@ -600,10 +600,12 @@ export class Bot {
             // recognition rate, per second
             let rate = sk.noticeMul * 4.0 / (1 + (d / 17) ** 2);
             rate *= 0.45 + 0.55 * clamp((centr - sk.fovDot) / (1 - sk.fovDot), 0, 1); // periphery is slow
+            const flashRead = p.blindT > 0 ? clamp(1 - p.blindT / 0.8, 0.12, 1) : 1;
+            rate *= flashRead;                                                        // whiteout makes reacquisition mushy
             if (e.horizSpeed > 2.4 || e.charge || e.bloom > 0.3) rate *= 1.6;          // motion and muzzle flashes pop
             else if (e.crouching) rate *= 0.55;                                        // a still croucher blends in
             if (this.expected(e.pos, 8)) rate *= 3;                                    // "I KNEW someone was there"
-            if (d < 7) rate = Math.max(rate, 3.6);                                     // in your face
+            if (d < 7) rate = Math.max(rate, 3.6 * flashRead);                         // in your face
             aw = Math.min(1.5, aw + rate * 0.13);
           }
         }
@@ -829,17 +831,24 @@ export class Bot {
       this.errT -= 0.13;
       if (this.errT <= 0) {
         this.errT = rand(0.13, 0.28);
+        const flash = clamp(p.blindT / 0.8, 0, 1);
         const mag = sk.trackErr * DEG * (0.5
           + clamp(enemy.horizSpeed / 5.4, 0, 1.2) * 0.85
           + clamp(p.horizSpeed / 5.4, 0, 1) * 0.5
-          + clamp(dist / 45, 0, 1) * 0.55);
+          + clamp(dist / 45, 0, 1) * 0.55) * (1 + flash * 5.5);
         this.wander.yaw = grand() * mag;
         this.wander.pitch = grand() * mag * 0.6;
+        if (flash > 0) {
+          const whiteout = (7 + dist * 0.16) * DEG * flash;
+          this.wander.yaw += grand() * whiteout;
+          this.wander.pitch += grand() * whiteout * 0.7;
+        }
       }
-      const decay = Math.exp(-0.13 / sk.settle);
+      const flash = clamp(p.blindT / 0.8, 0, 1);
+      const decay = Math.exp(-0.13 / (sk.settle * (1 + flash * 2)));
       this.aimErr.yaw = this.aimErr.yaw * decay + this.wander.yaw * (1 - decay);
       this.aimErr.pitch = this.aimErr.pitch * decay + this.wander.pitch * (1 - decay);
-      const blind = p.blindT > 0 ? 1 + p.blindT * 2.5 : 1;
+      const blind = 1 + flash * 8;
       this.aimYaw = yawTo(eye, V.set(tx, ty, tz)) + this.aimErr.yaw * blind;
       const dh = Math.hypot(tx - eye.x, tz - eye.z);
       this.aimPitch = Math.atan2(ty - eye.y, Math.max(dh, 0.01)) + this.aimErr.pitch * blind;
@@ -865,7 +874,7 @@ export class Bot {
     }
 
     // ---- the trigger: gated by the reaction pipeline and a fire cone ----
-    const ready = oriented && g.time >= this.reactAt && p.blindT <= 0.4;
+    const ready = oriented && g.time >= this.reactAt && p.blindT <= 0.65;
     const onTarget = Math.abs(angDiff(p.yaw, this.aimYaw)) < 9 * DEG;
     if (!ready) {
       ctrl.castHeld = false;

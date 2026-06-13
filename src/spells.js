@@ -99,6 +99,10 @@ export class SpellSystem {
     let deg = spell.spread[0] + spell.spread[1] * moveFrac;
     if (!p.body.onGround) deg += p.flying ? 3.2 : 2.4; // broom casting is wild
     deg += p.bloom; // recoil bloom from recent casts
+    if (!p.isHuman && p.blindT > 0) {
+      const flash = clamp(p.blindT / 0.8, 0, 1);
+      deg += flash * (8 + p.blindT * 10); // flashed bots can panic-fire, but not accurately
+    }
     if (p.crouching) deg *= 0.6;
     return deg * p.wand.spread * DEG;
   }
@@ -168,8 +172,12 @@ export class SpellSystem {
   // Protego: hold RMB
   updateShield(p, holdingAlt, dt) {
     const spell = SPELLS.protego;
-    const want = holdingAlt && p.alive && p.disarmT <= 0 && !p.recharging && p.mana > 1 && !p.charge;
+    const greaterGood = p.char.id === 'dumbledore' ? 0.65 : 1; // his shield barely sips
+    const shieldMult = p.wand.manaMult * (p.disc?.drainMult ?? 1) * greaterGood;
+    const startCost = (spell.activate ?? 0) * shieldMult;
+    const want = holdingAlt && p.alive && p.disarmT <= 0 && !p.recharging && p.mana >= Math.max(1, startCost) && !p.charge;
     if (want && !p.shielding) {
+      p.mana = Math.max(0, p.mana - startCost);
       p.shielding = true;
       p.shieldOnAt = this.game.time;
       p.shieldSound = this.game.audio.play('shield', { pos: p.pos });
@@ -178,8 +186,7 @@ export class SpellSystem {
       this.stopShield(p);
     }
     if (p.shielding) {
-      const greaterGood = p.char.id === 'dumbledore' ? 0.65 : 1; // his shield barely sips
-      p.mana -= spell.drain * p.wand.manaMult * (p.disc?.drainMult ?? 1) * greaterGood * dt;
+      p.mana -= spell.drain * shieldMult * dt;
       if (p.mana <= 0) {
         p.mana = 0;
         this.stopShield(p, true);
@@ -348,7 +355,8 @@ export class SpellSystem {
 
       if (hitKind === 'shield') {
         const sp = pr.spell;
-        // PERFECT BLOCK: shield raised at the last instant reflects the bolt at its
+        const incomingDir = new THREE.Vector3(pr.vx, pr.vy, pr.vz).normalize();
+        // PERFECT PARRY: shield raised at the last instant reflects the bolt at its
         // caster. Bots only get the reflect on a deliberate parry read — their
         // reflex blocks shouldn't accidentally fall inside the timing window.
         const parryWin = SPELLS.protego.parry * (hitPlayer.char.id === 'dumbledore' ? 1.35 : 1) +
@@ -369,20 +377,28 @@ export class SpellSystem {
           pr.x = hitPos.x + back.x * 1.3; pr.y = hitPos.y + back.y * 1.3; pr.z = hitPos.z + back.z * 1.3;
           pr.traveled = 0; pr.life = 5;
           pr.fx.group.position.set(pr.x, pr.y, pr.z);
-          game.effects.parryFX(hitPos);
+          hitPlayer.onParryAnim();
+          game.effects.parryFX(hitPos, hitPlayer, incomingDir);
           game.audio.play('parry', { pos: hitPos, vol: 1 });
           // reward the read: refund mana, grant a brief flow surge, make it cinematic
           hitPlayer.mana = Math.min(hitPlayer.stats.mana, hitPlayer.mana + 25);
           hitPlayer.parryBuffT = 2.0;
           if (hitPlayer.isHuman || caster.isHuman) { game.hitstop(0.05); game.slowmo(0.5, 0.35); game.feedback.bloomPulse(0.6); }
-          if (hitPlayer.isHuman) game.hud.notice('PERFECT BLOCK — curse reflected!', 'good');
+          if (hitPlayer.isHuman) game.hud.notice('PERFECT PARRY — curse reflected!', 'good');
           continue; // projectile lives on, flying back
         }
-        // a held Protego is the answer to rapid bolts — but the Killing Curse
-        // nearly shatters it (Pick pressures the turtle) and a blast leans on it hard
+        // The Killing Curse ignores a late Protego. Only the perfect parry above
+        // can turn it away.
+        if (sp.id === 'avada') {
+          this.stopShield(hitPlayer, true);
+          this.boltHit(pr, hitPlayer, 'chest', hitPos);
+          this.kill(pr, i);
+          continue;
+        }
+        // a held Protego is the answer to rapid bolts, and a blast leans on it hard
         const drain = (sp.kind === 'lob' ? 42 : sp.dmg * SPELLS.protego.drainHit) * hitPlayer.wand.manaMult * (hitPlayer.disc?.drainMult ?? 1);
-        hitPlayer.mana -= Math.min(sp.id === 'avada' ? 95 : 60, drain);
-        const boltDir = new THREE.Vector3(pr.vx, pr.vy, pr.vz).normalize();
+        hitPlayer.mana -= Math.min(60, drain);
+        const boltDir = incomingDir;
         game.effects.shieldHit(hitPlayer, hitPos, boltDir);
         // blocked hits shove the shield-bearer back a touch
         hitPlayer.vel.x += boltDir.x * (sp.kind === 'lob' ? 2.0 : 1.0);

@@ -14,6 +14,7 @@ export class Effects {
     this.boltPool = [];
     this.boltLightCount = 0;
     this.wandDrops = []; // physical disarmed wands
+    this.parrySlashes = []; // short-lived wand swipes on perfect parries
     this.relicFx = null;
     this.world = null; // set by Game after the map loads (ground queries)
     this.time = 0;
@@ -420,9 +421,45 @@ export class Effects {
     this.particles.puff('ring', { pos, life: 0.35, size0: 0.4, size1: 2.4, color: 0xeaf6ff, alpha0: 0.9, alpha1: 0, additive: true });
   }
 
-  parryFX(pos) {
-    this.particles.puff('ring', { pos, life: 0.4, size0: 0.5, size1: 3.4, color: 0xffd24a, alpha0: 1, alpha1: 0, additive: true });
-    this.particles.burst({ pos, count: 26, color: 0xffd24a, color2: 0xffffff, speed: 7, spread: 1, life: 0.5, size: 0.45, gravity: 2, drag: 3 });
+  parryFX(pos, player = null, dir = null) {
+    const incoming = dir?.clone ? dir.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    let slashDir = new THREE.Vector3(-incoming.z, 0.2, incoming.x);
+    if (slashDir.lengthSq() < 0.001) slashDir = new THREE.Vector3(1, 0.2, 0);
+    slashDir.normalize();
+
+    const cfg = player?.char?.skin?.wand || {};
+    const woodMat = new THREE.MeshLambertMaterial({
+      color: cfg.color ?? 0x5a3a1c, transparent: true, opacity: 0.95,
+    });
+    const gripMat = cfg.grip ? new THREE.MeshLambertMaterial({
+      color: cfg.grip, transparent: true, opacity: 0.95,
+    }) : null;
+    const wand = makeWand(
+      { len: (cfg.len ?? 0.5) * 1.25 },
+      woodMat,
+      gripMat,
+      { radialSegs: 10, thick: 1.4 }
+    );
+    const group = new THREE.Group();
+    group.position.copy(pos).add(slashDir.clone().multiplyScalar(-0.15));
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), slashDir);
+    group.add(wand);
+
+    const streakMat = new THREE.MeshBasicMaterial({
+      color: 0xffd24a, transparent: true, opacity: 0.65,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const streak = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1.25, 8), streakMat);
+    group.add(streak);
+    this.scene.add(group);
+    this.parrySlashes.push({
+      group,
+      mats: gripMat ? [woodMat, gripMat, streakMat] : [woodMat, streakMat],
+      t: 0.22, life: 0.22, dir: slashDir,
+    });
+
+    this.particles.puff('glow', { pos, life: 0.28, size0: 1.4, size1: 0.2, color: 0xfff1a0, alpha0: 0.95, alpha1: 0, additive: true });
+    this.particles.burst({ pos, count: 26, color: 0xffd24a, color2: 0xffffff, dirX: slashDir.x, dirY: 0.45, dirZ: slashDir.z, speed: 7, spread: 0.55, life: 0.5, size: 0.45, gravity: 2, drag: 3 });
     this.particles.flashLight(pos, 0xffd24a, 30, 0.25, 10);
   }
 
@@ -570,6 +607,14 @@ export class Effects {
       this.particles.burst({ pos: drop.mesh.position, count: 12, color: 0xffb347, color2: 0xffffff, speed: 2, spread: 1, life: 0.4, size: 0.3, gravity: -1, drag: 2 });
       this.audio.play('wand_return', { pos: drop.mesh.position, vol: 0.7 });
     }
+  }
+
+  removeParrySlash(slash) {
+    if (!slash) return;
+    const i = this.parrySlashes.indexOf(slash);
+    if (i >= 0) this.parrySlashes.splice(i, 1);
+    this.scene.remove(slash.group);
+    slash.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
   }
 
   // ------------------------------------------------------------- equipment ---
@@ -746,6 +791,15 @@ export class Effects {
         shell.position.y = cr.position.y;
         shell.material.opacity = 0.2 + Math.sin(this.time * 5) * 0.1;
       }
+    }
+    for (let i = this.parrySlashes.length - 1; i >= 0; i--) {
+      const s = this.parrySlashes[i];
+      s.t -= dt;
+      const fade = Math.max(0, s.t / s.life);
+      s.group.position.addScaledVector(s.dir, dt * 2.4);
+      s.group.rotation.z += dt * 10;
+      for (const m of s.mats) m.opacity = 0.95 * fade;
+      if (s.t <= 0) this.removeParrySlash(s);
     }
     // dropped wands: tumble, land, then glimmer until picked up / returned
     for (const w of this.wandDrops) {
@@ -939,6 +993,7 @@ export class Effects {
     this.fires.length = 0;
     for (let i = this.wards.length - 1; i >= 0; i--) this.removeWard(this.wards[i]);
     for (let i = this.wandDrops.length - 1; i >= 0; i--) this.removeWandDrop(this.wandDrops[i], false);
+    for (let i = this.parrySlashes.length - 1; i >= 0; i--) this.removeParrySlash(this.parrySlashes[i]);
     this.removeRelic();
   }
 }

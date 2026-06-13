@@ -138,9 +138,9 @@ export const SPELLS = {
   },
   protego: {
     id: 'protego', name: 'Protego', kind: 'shield', slot: 0, icon: 'shield',
-    dmg: 0, mana: 0, drain: 12, drainHit: 0.45, speedMult: 0.6, price: 0,
+    dmg: 0, mana: 0, activate: 10, drain: 12, drainHit: 0.45, speedMult: 0.6, price: 0,
     parry: 0.3, color: 0x6fb4ff, glow: 0xbfe0ff,
-    role: 'Shield', desc: 'Hold RIGHT CLICK to block spells. Raise it at the last instant to REFLECT a bolt.',
+    role: 'Shield', desc: 'Hold RIGHT CLICK to block spells. Costs mana to raise, then drains while held. Raise it at the last instant to REFLECT a bolt.',
   },
 };
 

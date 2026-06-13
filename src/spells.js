@@ -350,17 +350,23 @@ export class SpellSystem {
           pr.owner.team !== hitPlayer.team &&
           (!hitPlayer.bot || hitPlayer.bot.parryIntent);
         if (perfect) {
+          const caster = pr.owner;
           const speed = Math.hypot(pr.vx, pr.vy, pr.vz);
-          const back = pr.owner.alive
-            ? new THREE.Vector3(pr.owner.pos.x, pr.owner.pos.y + pr.owner.body.height * 0.55, pr.owner.pos.z).sub(hitPos).normalize()
+          const back = caster.alive
+            ? new THREE.Vector3(caster.pos.x, caster.pos.y + caster.body.height * 0.55, caster.pos.z).sub(hitPos).normalize()
             : new THREE.Vector3(-pr.vx, -pr.vy, -pr.vz).normalize();
           pr.owner = hitPlayer; // the reflected curse now belongs to the parrier
+          pr.reflected = true;  // ...and it comes back angrier
           pr.vx = back.x * speed; pr.vy = back.y * speed; pr.vz = back.z * speed;
           pr.x = hitPos.x + back.x * 1.3; pr.y = hitPos.y + back.y * 1.3; pr.z = hitPos.z + back.z * 1.3;
           pr.traveled = 0; pr.life = 5;
           pr.fx.group.position.set(pr.x, pr.y, pr.z);
           game.effects.parryFX(hitPos);
           game.audio.play('parry', { pos: hitPos, vol: 1 });
+          // reward the read: refund mana, grant a brief flow surge, make it cinematic
+          hitPlayer.mana = Math.min(hitPlayer.stats.mana, hitPlayer.mana + 25);
+          hitPlayer.parryBuffT = 2.0;
+          if (hitPlayer.isHuman || caster.isHuman) { game.hitstop(0.05); game.slowmo(0.5, 0.35); }
           if (hitPlayer.isHuman) game.hud.notice('PERFECT BLOCK — curse reflected!', 'good');
           continue; // projectile lives on, flying back
         }
@@ -425,6 +431,13 @@ export class SpellSystem {
     const game = this.game;
     const sp = pr.spell;
     const owner = pr.owner;
+    // BLINK DODGE: a wizard caught mid-blink slips the bolt entirely — even Avada
+    if (victim.dashIframeT > 0 && owner !== victim) {
+      game.effects.dashDodgeFX(victim);
+      if (victim.isHuman) game.hud.notice('BLINK — dodged!', 'good');
+      else if (owner.isHuman) game.hud.notice(`${victim.name} blinked away!`, 'bad');
+      return;
+    }
     const isHS = zone === 'head';
     let dmg = sp.dmg * owner.effPower() * owner.wand.power;
     if (sp.falloff) {
@@ -434,7 +447,29 @@ export class SpellSystem {
     }
     if (isHS && sp.hs > 1) dmg *= sp.hs;
     else dmg *= HITZONES[zone]?.mult ?? 1;
-    // leg tag: clipped legs stumble — brief extra slow (CS tagging)
+    // COMBO PAYOFF: a bolt into a controlled enemy bites harder. Read the
+    // victim's state BEFORE this hit lands (so a leg shot can't combo off the
+    // slow it is about to apply below). Petrified statues SHATTER; staggered/
+    // snared/slowed wizards take a crunch — the heart of an arcade rally.
+    let comboKind = null, comboMult = 1;
+    if (sp.dmg >= 10 && owner !== victim) {
+      if (victim.freezeT > 0) { comboKind = 'shatter'; comboMult = 1.5; }
+      else if (victim.staggerT > 0) { comboKind = 'crush'; comboMult = 1.3; }
+      else if (victim.snareT > 0) { comboKind = 'crush'; comboMult = 1.25; }
+      else if (victim.slowT > 0) { comboKind = 'crush'; comboMult = 1.2; }
+    }
+    if (pr.reflected) comboMult *= 1.4; // a parried curse returns angrier
+    dmg *= comboMult;
+    if (comboKind) {
+      game.effects.comboFX(hitPos, comboKind);
+      game.audio.play(comboKind === 'shatter' ? 'freeze_break' : 'combo', { pos: hitPos, vol: 0.85 });
+      if (owner.isHuman) {
+        game.hud.notice(comboKind === 'shatter' ? 'SHATTER!' : 'COMBO!', 'good');
+        game.hitstop(comboKind === 'shatter' ? 0.05 : 0.03);
+      }
+    }
+    // leg tag: clipped legs stumble — brief extra slow (CS tagging), applied
+    // after the combo check above so a leg shot doesn't combo off its own slow
     if (zone === 'leg' && sp.dmg >= 15) victim.slowT = Math.max(victim.slowT, 0.3);
     game.effects.fleshImpact(hitPos, sp);
 

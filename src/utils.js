@@ -60,3 +60,38 @@ export function hexCss(hex) {
 
 // Gaussian-ish random in [-1,1], biased to center
 export const grand = () => (Math.random() + Math.random() + Math.random()) / 1.5 - 1;
+
+// Lathe-turned wand prop shared by the rigs, disarm drops, and loot piles:
+// pommel bulb, ridged grip, a carved collar, then a long tapering shaft.
+// Centered on Y like a CylinderGeometry of the same length, so it drops onto
+// the transforms the old cylinder wands used.
+export function makeWand(cfg = {}, woodMat, gripMat = null, { lengthScale = 1, radialSegs = 12, thick = 1 } = {}) {
+  const L = (cfg.len ?? 0.5) * lengthScale;
+  const h = L / 2;
+  const pts = [
+    [0, 0],            // pommel base (closed)
+    [0.016, 0.01],
+    [0.0235, 0.07],    // pommel bulb
+    [0.019, 0.17],     // pommel neck
+    [0.0225, 0.23],    // grip swell
+    [0.0195, 0.35],
+    [0.0225, 0.42],    // grip ridge
+    [0.0185, 0.53],
+    [0.021, 0.59],     // collar
+    [0.0155, 0.72],
+    [0.0125, 1.1],
+    [0.0095, 1.5],
+    [0.007, 1.8],
+    [0.005, 1.97],
+    [0, 2],
+  ].map(([x, y]) => new THREE.Vector2(x * thick, (y / 2) * L - h));
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.LatheGeometry(pts, radialSegs), woodMat));
+  if (gripMat) {
+    // a metal band at the collar for silver-gripped wands (Draco, Lucius)
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0235 * thick, 0.0245 * thick, L * 0.05, radialSegs), gripMat);
+    band.position.y = L * 0.295 - h;
+    g.add(band);
+  }
+  return g;
+}

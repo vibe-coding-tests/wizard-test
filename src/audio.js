@@ -420,6 +420,15 @@ export class AudioEngine {
         this._tone(out, t + 0.18, 0.16, { f0: 2640, type: 'triangle', vol: 0.25 });
         this._noise(out, t + 0.02, 0.3, { f0: 6000, f1: 9000, vol: 0.1, type: 'highpass' });
         break;
+      case 'dash': // a blink: airy whoosh with an arcane chime
+        N({ dur: 0.18, f0: 700, f1: 2800, q: 1.2, vol: 0.3, type: 'bandpass' });
+        T({ dur: 0.16, f0: 320, f1: 780, type: 'triangle', vol: 0.22 });
+        break;
+      case 'combo': // a crunch into a controlled enemy
+        T({ dur: 0.1, f0: 1700, f1: 820, type: 'square', vol: 0.28 });
+        N({ dur: 0.13, f0: 3200, f1: 700, vol: 0.32 });
+        T({ dur: 0.07, f0: 240, f1: 90, type: 'sine', vol: 0.25 });
+        break;
       default:
         break;
     }

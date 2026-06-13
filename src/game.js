@@ -69,6 +69,10 @@ export class Game {
     this.recentDeaths = []; // {team, x, y, z, killerX, killerZ, t} — bots trade off these
     this.relic = { state: 'idle', carrier: null, pos: new THREE.Vector3(), fuseT: 0, planter: null, plantProgress: 0, defuseProgress: 0, defuser: null, beepT: 0, warned: false };
     this.shakeT = 0; this.shakeAmp = 0;
+    // cinematic time control: hitstop freezes the sim for a beat; slow-mo
+    // stretches the marquee moments. Disabled under ?auto so tests stay exact.
+    this.timeScale = 1; this.hitstopT = 0; this.slowmoT = 0; this.slowmoScale = 1;
+    this.autoMode = (typeof location !== 'undefined' && new URLSearchParams(location.search).has('auto'));
     this.spectIdx = 0;
     this.deathCamT = 0;
     this.summons = [];   // conjured serpents
@@ -438,6 +442,7 @@ export class Game {
     if (spell?.id === 'avada') {
       victim.rig?.flash(0x37ff6e, 0.6); // body flashes green
       this.effects.avadaWisp(victim.pos);
+      if (attacker?.isHuman || victim.isHuman) { this.hitstop(0.07); this.slowmo(0.55, 0.4); }
     }
     this.effects.deathBurst(victim, TEAM_INFO[victim.team].color);
 
@@ -483,7 +488,7 @@ export class Game {
         this.effects.healFX(attacker);
         if (attacker.isHuman) this.hud.notice('THE HUNGER — +30 HP, speed surge', 'good');
       }
-      if (attacker.isHuman) this.audio.ui('kill');
+      if (attacker.isHuman) { this.audio.ui('kill'); this.hitstop(0.05); }
 
       if (this.mode !== 'dm') {
         // first blood bounty
@@ -500,6 +505,7 @@ export class Game {
           if (attacker.isHuman) {
             this.hud.announce(label, attacker.roundKills >= 5 ? 'The whole team. Alone.' : '', 'good');
             this.audio.stinger(attacker.roundKills >= 5 ? 'ace' : 'multikill');
+            if (attacker.roundKills >= 5) this.slowmo(0.8, 0.45);
           } else if (attacker.roundKills >= 3) {
             this.hud.notice(`${attacker.name}: ${label}`, attacker.team === this.human.team ? 'good' : 'bad');
             if (attacker.roundKills >= 5) this.audio.stinger('ace');
@@ -532,12 +538,14 @@ export class Game {
     if (this.state !== 'live' && this.state !== 'freeze') return;
     const attAlive = this.aliveOf(this.attackingTeam).length;
     const defAlive = this.aliveOf(this.defendingTeam()).length;
+    // a kill that ends the round gets a beat of slow-mo when the player is in it
+    const clutch = () => { if (this.human.alive || attacker?.isHuman || victim.isHuman) this.slowmo(0.6, 0.4); };
     if (this.relic.state === 'planted') {
-      if (defAlive === 0) this.endRound(this.attackingTeam, 'elim');
+      if (defAlive === 0) { clutch(); this.endRound(this.attackingTeam, 'elim'); }
       // attackers can all die; round continues until defuse/explode
     } else {
-      if (attAlive === 0) this.endRound(this.defendingTeam(), 'elim');
-      else if (defAlive === 0) this.endRound(this.attackingTeam, 'elim');
+      if (attAlive === 0) { clutch(); this.endRound(this.defendingTeam(), 'elim'); }
+      else if (defAlive === 0) { clutch(); this.endRound(this.attackingTeam, 'elim'); }
     }
   }
 
@@ -884,6 +892,20 @@ export class Game {
     this.shakeT = 0.4;
   }
 
+  // Cinematic time. hitstop freezes the whole sim for a beat (impact crunch);
+  // slowmo stretches a moment out. Both are no-ops under ?auto and when the
+  // player has switched cinematics off, so headless tests stay deterministic.
+  hitstop(t) {
+    if (this.autoMode || this.settings?.juice === false) return;
+    this.hitstopT = Math.max(this.hitstopT, t);
+  }
+
+  slowmo(dur, scale = 0.4) {
+    if (this.autoMode || this.settings?.juice === false) return;
+    if (this.slowmoT <= 0) { this.slowmoScale = scale; this.slowmoT = dur; }
+    else { this.slowmoScale = Math.min(this.slowmoScale, scale); this.slowmoT = Math.max(this.slowmoT, dur); }
+  }
+
   shakeByDistance(pos, range) {
     const d = this.camera.position.distanceTo(pos);
     if (d < range) this.shake(clamp(1 - d / range, 0, 1) * 0.9);
@@ -1082,12 +1104,11 @@ export class Game {
   // --------------------------------------------------------------- update ---
   update(dt) {
     if (this.paused || this.over) return;
-    dt = Math.min(dt, 0.05);
-    this.time += dt;
+    const realDt = Math.min(dt, 0.05);
 
-    // perf governor
-    this.fpsAcc += dt; this.fpsN++;
-    this.qualT += dt;
+    // perf governor — measures real frame time, independent of slow-mo
+    this.fpsAcc += realDt; this.fpsN++;
+    this.qualT += realDt;
     if (this.qualT > 2) {
       const avg = this.fpsAcc / this.fpsN;
       const q = this.particles.quality;
@@ -1095,6 +1116,14 @@ export class Game {
       else if (avg < 0.0135 && q < 1) this.particles.setQuality(Math.min(1, q + 0.12));
       this.fpsAcc = 0; this.fpsN = 0; this.qualT = 0;
     }
+
+    // cinematic time: a hitstop freezes the sim, then slow-mo eases it back in
+    let scale = 1;
+    if (this.hitstopT > 0) { this.hitstopT = Math.max(0, this.hitstopT - realDt); scale = 0; }
+    else if (this.slowmoT > 0) { this.slowmoT = Math.max(0, this.slowmoT - realDt); scale = this.slowmoScale; }
+    this.timeScale = scale;
+    dt = realDt * scale;
+    this.time += dt;
 
     // state machine
     if (this.mode === 'dm') {
@@ -1214,7 +1243,7 @@ export class Game {
 
     this.updateCamera(dt);
     this.audio.updateListener(this.camera.position, new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion));
-    this.hud.update(dt);
+    this.hud.update(realDt);
   }
 
   handleHumanInput(dt, buyOpenMode = false) {
@@ -1255,6 +1284,8 @@ export class Game {
       c.castHeld = false; c.altHeld = false;
     }
     if (this.frozen) { c.moveX = 0; c.moveZ = 0; c.jump = false; }
+
+    if (!buyOpenMode && !this.frozen && input.pressed('dash')) p.tryDash();
 
     for (let i = 1; i <= 5; i++) if (input.pressed(`slot${i}`)) p.selectSlot(i);
     if (m.wheel) p.cycleSpell(m.wheel > 0 ? 1 : -1);

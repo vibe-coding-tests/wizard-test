@@ -25,14 +25,16 @@ export class Menus {
       mode: 'relic', mapId: 'dust2', team: TEAM.ORDER, charId: 'harry', prefWand: 'holly',
       botsFriendly: 4, botsEnemy: 5, difficulty: 'normal', format: 'mr8', discipline: 'duelist',
       aiCustom: { reflex: 50, aim: 50, sense: 50, iq: 50 },
-      squad: [], foes: [],
+      squad: [], foes: [], dmBanned: [],
       ...(ctx.settings.lastSetup || {}),
     };
     if (!this.setup.aiCustom) this.setup.aiCustom = { reflex: 50, aim: 50, sense: 50, iq: 50 };
+    if (!Array.isArray(this.setup.dmBanned)) this.setup.dmBanned = [];
     // scrub stale roster picks (old saves, renamed characters, champion overlap)
     const validChar = (id) => CHARACTERS.some((c) => c.id === id);
     this.setup.squad = (this.setup.squad || []).filter((id) => validChar(id) && id !== this.setup.charId);
     this.setup.foes = (this.setup.foes || []).filter((id) => validChar(id) && id !== this.setup.charId && !this.setup.squad.includes(id));
+    this.setupStep = 0;
     this.activePanel = null;
   }
 
@@ -120,12 +122,24 @@ export class Menus {
 
   // ------------------------------------------------------------ match setup ---
   showSetup(mode) {
+    if (this.setup.mode !== mode) this.setupStep = 0;
     this.setup.mode = mode;
+    this.setupStep = clamp(this.setupStep ?? 0, 0, 2);
+    let refreshRosters = () => {};
     const p = this.panel('setup');
     el('h2', 'panel-title', p, mode === 'dm' ? 'DEATHMATCH SETUP' : 'MATCH SETUP');
+    const steps = mode === 'dm'
+      ? ['Map', 'Champion', 'Loadout & bans']
+      : ['Map', 'Champion & lineups', 'Loadout & rules'];
+    const stepRow = el('div', 'setup-steps', p);
+    steps.forEach((label, i) => {
+      const s = el('button', `setup-step ${i === this.setupStep ? 'active' : ''} ${i < this.setupStep ? 'done' : ''}`, stepRow, `${i + 1}. ${label}`);
+      s.onclick = () => { this.click(); this.setupStep = i; this.showSetup(mode); };
+    });
     const scroll = el('div', 'setup-scroll', p);
 
     // --- maps ---
+    if (this.setupStep === 0) {
     const mapRows = [];
     const mapGroup = (title, group) => {
       el('h3', 'sec-title', scroll, title);
@@ -151,8 +165,10 @@ export class Menus {
     mapGroup('BATTLEGROUND — THE CLASSICS', 'classic');
     mapGroup('BATTLEGROUND — HOGWARTS', 'hogwarts');
     mapGroup('BATTLEGROUND — THE WIZARDING WORLD', 'world');
+    }
 
     // --- team ---
+    if (this.setupStep === 1) {
     let teamRow = null;
     if (mode === 'relic') {
       el('h3', 'sec-title', scroll, 'ALLEGIANCE');
@@ -178,7 +194,6 @@ export class Menus {
       ['HP', (c) => c.hp / 130], ['Speed', (c) => (c.speed - 4.2) / 1.8], ['Power', (c) => (c.power - 0.7) / 0.65],
       ['Cast', (c) => (c.cast - 0.7) / 0.55], ['Mana', (c) => c.mana / 140], ['Regen', (c) => c.regen / 6.5],
     ];
-    let refreshRosters = () => {};
     for (const ch of CHARACTERS) {
       const c = el('div', `sel-card char${this.setup.charId === ch.id ? ' sel' : ''}`, charRow);
       c.dataset.id = ch.id;
@@ -257,8 +272,10 @@ export class Menus {
       }
     };
     refreshRosters();
+    }
 
     // --- discipline (your build for the match) ---
+    if (this.setupStep === 2) {
     el('h3', 'sec-title', scroll, 'DISCIPLINE (your school of magic — one passive build)');
     const discRow = el('div', 'card-row discs', scroll);
     for (const d of DISCIPLINES) {
@@ -390,13 +407,55 @@ export class Menus {
       fmtSel.value = this.setup.format;
       fmtSel.onchange = () => { this.setup.format = fmtSel.value; };
     }
+    if (mode === 'dm') {
+      el('h3', 'sec-title', scroll, 'DEATHMATCH BANS');
+      el('div', 'card-sub', scroll, 'Toggle out high-impact spells for balance experiments. Banned spells never appear in the warm-up loadout.');
+      const banGrid = el('div', 'ban-grid', scroll);
+      const banIds = ['avada', 'bombarda', 'incendio', 'petrificus', 'impedimenta', 'silencio', 'patronum', 'serpensortia', 'episkey'];
+      const refreshBans = () => {
+        for (const chip of banGrid.querySelectorAll('.ban-chip')) {
+          chip.classList.toggle('sel', this.setup.dmBanned.includes(chip.dataset.id));
+        }
+      };
+      for (const id of banIds) {
+        const sp = SPELLS[id];
+        if (!sp) continue;
+        const chip = el('div', 'ban-chip', banGrid);
+        chip.dataset.id = id;
+        el('img', 'ban-ico', chip).src = spellIcon(sp.icon);
+        const txt = el('div', 'ban-copy', chip);
+        el('div', 'ban-name', txt, sp.name);
+        el('div', 'ban-role', txt, sp.role);
+        chip.onclick = () => {
+          this.click();
+          const i = this.setup.dmBanned.indexOf(id);
+          if (i >= 0) this.setup.dmBanned.splice(i, 1);
+          else this.setup.dmBanned.push(id);
+          refreshBans();
+        };
+      }
+      refreshBans();
+    }
+    }
 
     const foot = el('div', 'setup-foot', p);
     const back = el('button', 'btn', foot, '← BACK');
-    back.onclick = () => { this.click(); this.showMain(); };
-    const start = el('button', 'btn big primary', foot, mode === 'dm' ? 'ENTER WARM-UP' : 'START MATCH');
+    back.onclick = () => {
+      this.click();
+      if (this.setupStep > 0) { this.setupStep--; this.showSetup(mode); }
+      else this.showMain();
+    };
+    const controls = el('button', 'btn', foot, 'CUSTOMIZE CONTROLS');
+    controls.onclick = () => { this.click(); this.showSettings(false); };
+    const finalLabel = mode === 'dm' ? 'ENTER WARM-UP' : 'START MATCH';
+    const start = el('button', 'btn big primary', foot, this.setupStep < steps.length - 1 ? 'CONTINUE →' : finalLabel);
     start.onclick = () => {
       this.click();
+      if (this.setupStep < steps.length - 1) {
+        this.setupStep++;
+        this.showSetup(mode);
+        return;
+      }
       this.ctx.settings.lastSetup = { ...this.setup };
       this.ctx.saveSettings();
       this.clear();
@@ -434,6 +493,18 @@ export class Menus {
     fpsChk.type = 'checkbox';
     fpsChk.checked = s.showFps;
     fpsChk.onchange = () => { s.showFps = fpsChk.checked; this.ctx.applySettings(); };
+    const perfRow = el('div', 'opt-row', grid);
+    el('label', '', perfRow, 'Performance mode');
+    const perfChk = el('input', '', perfRow);
+    perfChk.type = 'checkbox';
+    perfChk.checked = !!s.performanceMode;
+    perfChk.onchange = () => { s.performanceMode = perfChk.checked; this.ctx.applySettings(); this.ctx.saveSettings(); };
+    const juiceRow = el('div', 'opt-row', grid);
+    el('label', '', juiceRow, 'Cinematic slow-mo');
+    const juiceChk = el('input', '', juiceRow);
+    juiceChk.type = 'checkbox';
+    juiceChk.checked = s.juice !== false;
+    juiceChk.onchange = () => { s.juice = juiceChk.checked; this.ctx.applySettings(); this.ctx.saveSettings(); };
 
     // crosshair editor
     el('h3', 'sec-title', scroll, 'CROSSHAIR');

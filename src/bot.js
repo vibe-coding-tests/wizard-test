@@ -169,6 +169,7 @@ export class Bot {
     if (Math.random() < u * (this.role.type === 'attack' ? 1.0 : 0.7) && p.money > 900) g.buy(p, 'spell', 'lumos');
     if (Math.random() < u * 0.75 && p.money > 1000) g.buy(p, 'spell', 'fumos');
     if (Math.random() < u * (this.role.type === 'defend' ? 0.65 : 0.4) && p.money > 1400) g.buy(p, 'spell', 'incendio');
+    if (Math.random() < u * (ai.team > 0.6 ? 0.65 : 0.3) && p.money > 1300) g.buy(p, 'spell', 'episkey');
     // signature spell: every champion reaches for their favorite first
     const fav = p.char.fav;
     if (fav && SPELLS[fav] && Math.random() < 0.6 && p.money > SPELLS[fav].price * p.priceMult() + 700) {
@@ -184,6 +185,7 @@ export class Bot {
     if (Math.random() < 0.55 && p.money > 1300) g.buy(p, 'equip', 'potion');
     if (Math.random() < ai.aggro * 0.45 && p.money > 2000) g.buy(p, 'equip', 'broom');
     if (ai.lurk > 0.45 && Math.random() < ai.lurk * 0.55 && p.money > 2000) g.buy(p, 'equip', 'cloak');
+    if ((ai.lurk > 0.45 || ai.aggro < 0.35 || p.disc?.id === 'phantom') && Math.random() < 0.35 && p.money > 1800) g.buy(p, 'equip', 'apparate');
     if (Math.random() < u * 0.5 && p.money > 1200) g.buy(p, 'equip', 'finite');
     // armor: anchors and the rich; luck and escape hatches for the rest
     if (p.equip.vest <= 0 && Math.random() < 0.35 + (1 - ai.aggro) * 0.4 && p.money > 2300) g.buy(p, 'equip', 'vest');
@@ -705,6 +707,10 @@ export class Bot {
           (enemy.charge || (enemy.shielding && dist < 24) || g.relic.defuser === enemy) &&
           p.mana > SPELLS.silencio.mana * 1.2 && Math.random() < 0.10 + sk.util * 0.25) {
         want = 'silencio';
+      } else if (p.ownsUsable('expelliarmus') && enemy.disarmT <= 0 && dist > 5 && dist < 26 &&
+          (enemy.charge || enemy.shielding || enemy.curSpell === 'avada' || enemy.mana < 28) &&
+          p.mana > SPELLS.expelliarmus.mana * 1.2 && Math.random() < 0.12 + sk.util * 0.22) {
+        want = 'expelliarmus';
       } else if (p.ownsUsable('impedimenta') && enemy.snareT <= 0 && dist > 5 && dist < 24 &&
           enemy.horizSpeed > 3 && p.mana > SPELLS.impedimenta.mana * 1.2 && Math.random() < sk.util * 0.07) {
         want = 'impedimenta';
@@ -792,12 +798,16 @@ export class Bot {
     if (this.retreating > 0) {
       // falling back: sprint away while spraying over the shoulder
       mx -= toE.x * 1.0; mz -= toE.z * 1.0;
+      if (p.dashCD <= 0 && p.dashT <= 0 && Math.random() < sk.iq * 0.04) p.tryDash(-toE.x, -toE.z);
       if (p.equip.broom > 0 && !p.flying) p.useEquip('broom');
       // desperate and far from help: rip the emergency portkey
       if (p.equip.portkey > 0 && p.portkeyT <= 0 && p.health < 20 && dist > 12) p.useEquip('portkey');
     } else if (ai.aggro > 0.85) {
-      // berserker: always closing
-      if (dist > ai.range) { mx += toE.x * 0.9; mz += toE.z * 0.9; }
+      // berserker: always closing — and blinks the gap when it's wide open
+      if (dist > ai.range) {
+        mx += toE.x * 0.9; mz += toE.z * 0.9;
+        if (dist > ai.range + 6 && p.dashCD <= 0 && p.dashT <= 0 && Math.random() < sk.iq * 0.05) p.tryDash(toE.x, toE.z);
+      }
     } else {
       const pref = ai.range;
       // attackers can't camp a staring contest: clock pressure or a stale
@@ -817,10 +827,12 @@ export class Bot {
         mx += toE.x * drift; mz += toE.z * drift;
       }
     }
-    // reflex dodge: hard sidestep off an incoming line
+    // reflex dodge: hard sidestep off an incoming line — skilled wizards
+    // commit it with a blink, a hard reactive dodge that can slip the bolt
     if (g.time < this.dodgeUntil) {
       mx = perp.x * this.dodgeDir * 1.25;
       mz = perp.z * this.dodgeDir * 1.25;
+      if (p.dashCD <= 0 && p.dashT <= 0 && Math.random() < sk.iq * 0.06) p.tryDash(mx, mz);
     }
     // surprised wizards freeze for the first beat (deer in torchlight)
     if (!oriented) { mx = 0; mz = 0; }

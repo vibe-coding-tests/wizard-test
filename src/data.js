@@ -139,7 +139,7 @@ export const SPELLS = {
   protego: {
     id: 'protego', name: 'Protego', kind: 'shield', slot: 0, icon: 'shield',
     dmg: 0, mana: 0, drain: 12, drainHit: 0.45, speedMult: 0.6, price: 0,
-    parry: 0.22, color: 0x6fb4ff, glow: 0xbfe0ff,
+    parry: 0.3, color: 0x6fb4ff, glow: 0xbfe0ff,
     role: 'Shield', desc: 'Hold RIGHT CLICK to block spells. Raise it at the last instant to REFLECT a bolt.',
   },
 };
@@ -461,6 +461,12 @@ export const ROUND = {
   freeze: 5, time: 105, buyWindow: 20, fuse: 35, plantTime: 3.2, defuseTime: 6,
   endPause: 6, dmTime: 300, dmRespawn: 2.5,
 };
+
+// Blink Dash — the intrinsic, always-available mobility tool that gives the
+// duel its footwork. A short directed burst on a cooldown; the iframe window
+// lets a well-timed blink slip a bolt (even the Killing Curse). speed*dur is
+// roughly the reach; rooted/petrified/snared wizards can't blink.
+export const DASH = { speed: 26, dur: 0.22, cd: 4.5, iframe: 0.18, hop: 1.7 };
 
 export const MAP_LIST = [
   // classics

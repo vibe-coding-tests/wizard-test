@@ -1,7 +1,7 @@
 // Player: stats, loadout, movement, equipment, first-person wand rig,
 // third-person wizard rig. Bots drive the same controller via p.ctrl.
 import * as THREE from 'three';
-import { SPELLS, SLOT3, SLOT5, TEAM_INFO, EQUIP_EFFECTS, wandById, charById, disciplineById } from './data.js';
+import { SPELLS, SLOT3, SLOT5, TEAM_INFO, EQUIP_EFFECTS, DASH, wandById, charById, disciplineById } from './data.js';
 import { moveBody, EYE_STAND, EYE_CROUCH, STAND_H } from './world.js';
 import { clamp, lerp, damp, uid, makeWand } from './utils.js';
 
@@ -75,6 +75,11 @@ export class Player {
     this.deathInfo = null;
     this.lastAttacker = null;
     this.flinchT = 0;
+    this.dashCD = 0;      // blink cooldown
+    this.dashT = 0;       // active blink burst (overrides footwork)
+    this.dashDirX = 0; this.dashDirZ = 0;
+    this.dashIframeT = 0; // brief dodge window mid-blink
+    this.parryBuffT = 0;  // flow surge after a perfect parry
 
     this.ctrl = { moveX: 0, moveZ: 0, jump: false, crouch: false, walkHeld: false, castHeld: false, altHeld: false, climbF: 0 };
     this.rig = null;
@@ -192,6 +197,7 @@ export class Player {
   speedMult() {
     let m = this.disc?.speedMult ?? 1;
     if (this.feralT > 0) m *= 1.12; // Greyback fresh off a kill
+    if (this.parryBuffT > 0) m *= 1.15; // perfect-parry flow surge
     if (this.crouching) m *= 0.48;
     else if (this.walking) m *= 0.5; // silent walk
     if (this.shielding) m *= SPELLS.protego.speedMult;
@@ -331,6 +337,30 @@ export class Player {
     this.fp?.onRecharge(dur);
   }
 
+  // Blink Dash — intrinsic mobility. A short directed burst with a brief dodge
+  // window; rooted, petrified, staggered or airborne wizards can't blink.
+  tryDash(dirX = null, dirZ = null) {
+    const g = this.game;
+    if (!this.alive || this.dashCD > 0 || this.dashT > 0) return false;
+    if (this.freezeT > 0 || this.staggerT > 0 || this.snareT > 0 || this.flying || this.portkeyT > 0) return false;
+    let dx = dirX, dz = dirZ;
+    if (dx === null || dz === null) { dx = this.ctrl.moveX; dz = this.ctrl.moveZ; }
+    let l = Math.hypot(dx, dz);
+    if (l > 0.001) { dx /= l; dz /= l; }
+    else { const f = this.lookDir(); dx = f.x; dz = f.z; l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; }
+    this.dashDirX = dx; this.dashDirZ = dz;
+    this.dashT = DASH.dur;
+    this.dashCD = DASH.cd;
+    this.dashIframeT = DASH.iframe;
+    this.vel.x = dx * DASH.speed; this.vel.z = dz * DASH.speed;
+    if (this.body.onGround) this.vel.y = Math.max(this.vel.y, DASH.hop);
+    g.spells.cancelCharge(this); // a blink breaks a charging curse
+    g.effects.dashFX(this, dx, dz);
+    g.audio.play('dash', { pos: this.pos, vol: this.isHuman ? 0.85 : 0.5 });
+    g.noise(this, 10);
+    return true;
+  }
+
   // -------------------------------------------------------------- update ---
   update(dt) {
     if (!this.alive) {
@@ -351,6 +381,9 @@ export class Player {
     this.staggerT = Math.max(0, this.staggerT - dt);
     this.freezeT = Math.max(0, this.freezeT - dt);
     this.feralT = Math.max(0, this.feralT - dt);
+    this.dashCD = Math.max(0, this.dashCD - dt);
+    this.dashIframeT = Math.max(0, this.dashIframeT - dt);
+    this.parryBuffT = Math.max(0, this.parryBuffT - dt);
     // wading puts the flames out
     if (this.burnT > 0 && this.body.inWater) {
       this.burnT = 0;
@@ -482,7 +515,12 @@ export class Player {
     const wl = Math.hypot(c.moveX, c.moveZ);
     let wx = 0, wz = 0;
     if (wl > 0.001) { wx = (c.moveX / wl) * speed; wz = (c.moveZ / wl) * speed; }
-    if (this.staggerT > 0 || this.freezeT > 0) { wx = 0; wz = 0; } // staggered or petrified: no walking
+    // blink dash: a hard directed burst that overrides normal footwork
+    if (this.dashT > 0) {
+      this.dashT = Math.max(0, this.dashT - dt);
+      wx = this.dashDirX * DASH.speed; wz = this.dashDirZ * DASH.speed;
+    }
+    if (this.staggerT > 0 || this.freezeT > 0) { wx = 0; wz = 0; this.dashT = 0; } // staggered or petrified: no walking
     // broom flight: steer with WASD, Space climbs, Ctrl dives, pitch carries
     // you up/down while moving forward
     let flyY = 0;
@@ -560,6 +598,7 @@ export class Player {
     this.healT = 0; this.broomT = 0; this.cloakT = 0;
     this.bloom = 0; this.punchPitch = 0; this.punchYaw = 0;
     this.spawnProtT = 0;
+    this.dashCD = 0; this.dashT = 0; this.dashIframeT = 0; this.parryBuffT = 0;
     this.flying = false; this.portkeyT = 0; this.walking = false;
     if (this.equip.vest > 0 && this.vestHP <= 0) this.vestHP = EQUIP_EFFECTS.vest.pool; // fresh vest charges on spawn
     this.hasRelic = false;

@@ -29,7 +29,7 @@ const check = (ok, label) => {
 async function load(qs) {
   errs.length = 0;
   await page.goto(`${BASE}/?auto=1&${qs}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__game && window.__game.state, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__game && window.__game.state, null, { timeout: 45000 });
   await page.evaluate(() => window.__game.particles.setQuality(0.3));
 }
 

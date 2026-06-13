@@ -3,7 +3,7 @@
 export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', crouch: 'ControlLeft', walk: 'ShiftLeft', recharge: 'KeyR',
-  buy: 'KeyB', scoreboard: 'Tab', use: 'KeyE',
+  dash: 'Mouse1', buy: 'KeyB', scoreboard: 'Tab', use: 'KeyE',
   slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4', slot5: 'Digit5',
   potion: 'KeyQ', broom: 'KeyC', cloak: 'KeyF', apparate: 'KeyG', finite: 'KeyX', portkey: 'KeyV',
   cast: 'Mouse0', altcast: 'Mouse2',
@@ -12,7 +12,7 @@ export const DEFAULT_BINDS = {
 export const BIND_LABELS = {
   forward: 'Move Forward', back: 'Move Back', left: 'Strafe Left', right: 'Strafe Right',
   jump: 'Jump', crouch: 'Crouch', walk: 'Walk (silent)', recharge: 'Recharge Magic',
-  buy: 'Buy Menu', scoreboard: 'Scoreboard', use: 'Use (Plant / Defuse / Loot)',
+  dash: 'Blink Dash', buy: 'Buy Menu', scoreboard: 'Scoreboard', use: 'Use (Plant / Defuse / Loot)',
   slot1: 'Spell Slot 1', slot2: 'Spell Slot 2', slot3: 'Spell Slot 3', slot4: 'Spell Slot 4', slot5: 'Spell Slot 5',
   potion: 'Drink Potion', broom: 'Broomstick (fly)', cloak: 'Invisibility Cloak', apparate: 'Apparate',
   finite: 'Finite (Cleanse Self)', portkey: 'Emergency Portkey',
@@ -41,12 +41,16 @@ export class Input {
     this.locked = false;
     this.rebind = null; // {action, cb}
     this.enabled = true;
+    this.lockEnabled = true;
     this.onLockChange = null;
     this.lockEl = null;
   }
 
   init(lockEl) {
     this.lockEl = lockEl;
+    if (new URLSearchParams(window.location.search).has('auto')) {
+      this.lockEnabled = false;
+    }
     window.addEventListener('keydown', (e) => {
       if (this.rebind) {
         e.preventDefault();
@@ -65,6 +69,7 @@ export class Input {
     window.addEventListener('mousedown', (e) => {
       const code = `Mouse${e.button}`;
       if (this.rebind) { e.preventDefault(); this._applyRebind(code); return; }
+      if (e.button === 1) e.preventDefault(); // middle-click: suppress autoscroll
       if (this.locked) {
         this.downCodes.add(code);
         this.edgeCodes.add(code);
@@ -89,10 +94,23 @@ export class Input {
   }
 
   lock() {
-    if (!this.locked && this.lockEl) {
-      const p = this.lockEl.requestPointerLock({ unadjustedMovement: true });
-      // Some browsers reject the options object or return undefined.
-      if (p?.catch) p.catch(() => { try { this.lockEl.requestPointerLock(); } catch { /* ok */ } });
+    if (new URLSearchParams(window.location.search).has('auto')) return;
+    if (this.lockEnabled && !this.locked && this.lockEl) {
+      const request = (opts, retryPlain = false) => {
+        try {
+          const p = opts ? this.lockEl.requestPointerLock(opts) : this.lockEl.requestPointerLock();
+          if (p?.catch) {
+            p.catch(() => {
+              if (retryPlain) request();
+            });
+          }
+        } catch {
+          if (retryPlain) request();
+        }
+      };
+      // Some browsers reject the options object, and automation can reject
+      // pointer lock entirely because there was no user gesture.
+      request({ unadjustedMovement: true }, true);
     }
   }
 

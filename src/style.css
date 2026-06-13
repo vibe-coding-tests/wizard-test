@@ -22,7 +22,7 @@
 }
 
 /* shared glass material */
-.hud-top, .radar, .feed-row, .hud-bl, .equip-chip, .slot, .tag,
+.hud-top, .radar, .feed-row, .hud-bl, .equip-chip, .slot, .tag, .dash-ind,
 .notice, .buy-timer, .spectate, .loot-hint, .relic-chip, .charge, .progress-bar {
   background: linear-gradient(160deg, var(--glass-hi), transparent 38%), var(--glass);
   border: 1px solid var(--glass-brd);
@@ -114,6 +114,15 @@ button { font-family: inherit; cursor: pointer; }
 .card-row.discs { grid-template-columns: repeat(4, 1fr); }
 .card-row.diffs { grid-template-columns: repeat(6, 1fr); }
 .sel-card.diff .card-sub { font-size: 10px; letter-spacing: 0.5px; }
+.setup-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: -4px 0 12px; }
+.setup-step {
+  pointer-events: auto;
+  background: var(--bg1); color: var(--dim);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 12px; font-weight: 900; letter-spacing: 1px; font-size: 11px;
+}
+.setup-step.done { color: var(--text); border-color: rgba(217, 164, 65, 0.35); }
+.setup-step.active { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 20px rgba(217, 164, 65, 0.12); }
 
 .sel-card {
   background: var(--bg1);
@@ -172,6 +181,18 @@ button { font-family: inherit; cursor: pointer; }
 .rchip-side { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .rchip-side.order { background: var(--order); box-shadow: 0 0 6px rgba(232, 84, 58, 0.6); }
 .rchip-side.death { background: var(--death); box-shadow: 0 0 6px rgba(73, 224, 125, 0.6); }
+
+.ban-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.ban-chip {
+  display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+  background: var(--bg1); border: 1px solid var(--line); border-radius: 10px;
+  cursor: pointer; transition: border-color 0.1s, opacity 0.1s, box-shadow 0.1s;
+}
+.ban-chip:hover { border-color: #56648f; }
+.ban-chip.sel { border-color: #ff6b5a; box-shadow: 0 0 0 1px #ff6b5a, 0 0 14px rgba(255, 80, 64, 0.16); }
+.ban-ico { width: 24px; height: 24px; opacity: 0.9; }
+.ban-name { font-size: 12px; font-weight: 800; }
+.ban-role { font-size: 10px; color: var(--dim); letter-spacing: 0.7px; text-transform: uppercase; }
 
 .stat-row { display: flex; align-items: center; gap: 6px; }
 .stat-label { width: 58px; font-size: 10px; color: var(--dim); letter-spacing: 0.5px; flex-shrink: 0; }
@@ -372,7 +393,21 @@ button { font-family: inherit; cursor: pointer; }
 }
 .tag.bad { color: #ff6e60; border-color: rgba(255, 90, 70, 0.4); }
 .tag.mana { color: var(--mana); border-color: rgba(88, 166, 255, 0.35); }
+.tag.good { color: #7dffa0; border-color: rgba(125, 255, 160, 0.4); }
 .tag.disc { color: #b89bff; border-color: rgba(150, 110, 255, 0.35); opacity: 0.9; }
+
+/* blink dash readiness pill */
+.dash-ind {
+  position: relative; overflow: hidden; align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 4px 11px; opacity: 0.55;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.dash-ind.ready { opacity: 1; box-shadow: 0 0 14px rgba(159, 208, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.dash-ind img { width: 16px; height: 16px; }
+.dash-key { font-size: 10px; font-weight: 800; color: #bfe0ff; }
+.dash-label { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--text); }
+.dash-cd { position: absolute; left: 0; bottom: 0; width: 100%; background: rgba(8, 11, 19, 0.66); pointer-events: none; }
 
 .hud-br { position: absolute; right: 18px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .equip-row { display: flex; gap: 6px; }

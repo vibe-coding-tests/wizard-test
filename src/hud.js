@@ -1,7 +1,7 @@
 // In-match HUD: crosshair, bars, spell slots, killfeed, radar, scoreboard,
 // buy menu, death screen, announcer, damage numbers and indicators.
 import * as THREE from 'three';
-import { SPELLS, WANDS, EQUIPMENT, TEAM, TEAM_INFO, ROUND, SLOT3, SLOT5, wandById } from './data.js';
+import { SPELLS, WANDS, EQUIPMENT, TEAM, TEAM_INFO, ROUND, SLOT3, SLOT5, DASH, wandById } from './data.js';
 import { el, clamp, fmtTime, hexCss, lerp } from './utils.js';
 import { keyLabel } from './input.js';
 
@@ -227,6 +227,12 @@ export class HUD {
     this.mpText = el('div', 'bar-text', mpRow, '100');
     this.moneyEl = el('div', 'money', bl);
     this.statusEl = el('div', 'status-tags', bl);
+    // blink dash readiness — the intrinsic mobility cooldown
+    this.dashEl = el('div', 'dash-ind', bl);
+    el('img', '', this.dashEl).src = spellIcon('blink');
+    el('span', 'dash-key', this.dashEl, keyLabel(this.input.binds.dash));
+    el('span', 'dash-label', this.dashEl, 'BLINK');
+    this.dashCdEl = el('div', 'dash-cd', this.dashEl);
 
     // bottom right: slots + equipment
     const br = el('div', 'hud-br', h);
@@ -735,7 +741,15 @@ export class HUD {
     if (p.burnT > 0) tags += `<span class="tag bad">BURNING</span>`;
     if (p.bleeds.length > 0) tags += `<span class="tag bad">BLEEDING</span>`;
     if (p.freezeT > 0) tags += `<span class="tag bad">PETRIFIED ${p.freezeT.toFixed(1)}</span>`;
+    if (p.parryBuffT > 0) tags += `<span class="tag good">FLOW</span>`;
     this.statusEl.innerHTML = tags;
+
+    // blink cooldown indicator
+    if (this.dashEl) {
+      this.dashEl.style.display = p.alive ? 'inline-flex' : 'none';
+      this.dashEl.classList.toggle('ready', p.dashCD <= 0);
+      this.dashCdEl.style.height = `${clamp(p.dashCD / DASH.cd, 0, 1) * 100}%`;
+    }
 
     // timer + scores
     if (g.mode === 'dm') {

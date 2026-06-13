@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS = {
   fov: 90, // horizontal FOV, CS-style
   volume: 0.7,
   showFps: false,
+  juice: true, // cinematic hitstop + slow-mo on the big moments
+  performanceMode: false,
   crosshair: { color: '#7dffa0', size: 7, gap: 4, thickness: 2, dot: false },
   binds: null,
   lastSetup: null,
@@ -34,8 +36,11 @@ const settings = loadSettings();
 const appEl = document.getElementById('app');
 const uiEl = document.getElementById('ui');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-renderer.setSize(window.innerWidth, window.innerHeight);
+function applyRenderScale() {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.performanceMode ? 1.0 : 1.35));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+applyRenderScale();
 renderer.toneMapping = THREE.ACESFilmicToneMapping; // filmic response: glows bloom, darks stay rich
 renderer.toneMappingExposure = 1.18;
 appEl.appendChild(renderer.domElement);
@@ -53,7 +58,7 @@ function applyFov() {
 }
 
 window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  applyRenderScale();
   camera.aspect = window.innerWidth / window.innerHeight;
   applyFov();
 });
@@ -78,6 +83,7 @@ function saveSettings() {
 
 function applySettings() {
   audio.setVolume(settings.volume);
+  applyRenderScale();
   applyFov();
   hud.applyCrosshair();
 }
@@ -88,9 +94,10 @@ const menus = new Menus(uiEl, {
   startGame, quitToMenu, resumeGame,
 });
 
-function startGame(setup) {
+function startGame(setup, { requestLock = true } = {}) {
   disposeGame();
   audio.ensure();
+  input.lockEnabled = requestLock;
   scene = new THREE.Scene();
   scene.add(camera);
   paused = false;
@@ -108,7 +115,7 @@ function startGame(setup) {
     },
   }, setup);
   menus.clear();
-  input.lock();
+  if (requestLock) input.lock();
 }
 
 let endedGame = null;
@@ -131,6 +138,7 @@ function disposeGame() {
 function quitToMenu() {
   disposeGame();
   paused = false;
+  input.lockEnabled = true;
   input.unlock();
   menus.showLockOverlay(false);
   menus.showMain();
@@ -225,6 +233,7 @@ if (params.get('auto')) {
     // hand-picked lineups (?squad=ginny,neville&foes=greyback,umbridge)
     squad: (params.get('squad') || '').split(',').filter(Boolean),
     foes: (params.get('foes') || '').split(',').filter(Boolean),
+    dmBanned: (params.get('ban') || '').split(',').filter(Boolean),
   };
   // custom brain axes via URL (?diff=custom&rf=80&am=20&se=60&iq=40)
   if (setup.difficulty === 'custom') {
@@ -233,7 +242,7 @@ if (params.get('auto')) {
       sense: Number(params.get('se') ?? 50), iq: Number(params.get('iq') ?? 50),
     };
   }
-  startGame(setup);
+  startGame(setup, { requestLock: false });
 } else {
   menus.showMain();
 }

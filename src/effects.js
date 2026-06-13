@@ -1,7 +1,7 @@
 // Spell VFX entities: bolts, trails, impacts, explosions, smoke, fire, flash,
 // shields, relic. Gameplay queries (smoke LOS, fire areas) read this module's lists.
 import * as THREE from 'three';
-import { rand, choice } from './utils.js';
+import { rand, choice, makeWand } from './utils.js';
 
 export class Effects {
   constructor(scene, particles, audio) {
@@ -20,27 +20,54 @@ export class Effects {
   }
 
   // ---------------------------------------------------------------- bolts ---
-  // core (hot white-ish) + additive shell (spell color) + optional spinning
-  // halo ring + a pooled point light on the first few bolts in flight.
+  // core (hot white-ish) + additive shell (spell color) + comet tail +
+  // orbiting motes + optional spinning halo ring + a pooled point light on
+  // the first few bolts in flight.
   acquireBolt(spell) {
     let b = this.boltPool.pop();
     if (!b) {
       const group = new THREE.Group();
       const core = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 8, 6),
+        new THREE.SphereGeometry(0.09, 14, 10),
         new THREE.MeshBasicMaterial({ color: 0xffffff })
       );
       group.add(core);
       const shell = new THREE.Mesh(
-        new THREE.SphereGeometry(0.17, 8, 6),
+        new THREE.SphereGeometry(0.17, 14, 10),
         new THREE.MeshBasicMaterial({
           color: 0xffffff, transparent: true, opacity: 0.5,
           blending: THREE.AdditiveBlending, depthWrite: false,
         })
       );
       group.add(shell);
+      // comet tail streaming behind the bolt (+Z is the travel direction)
+      const tail = new THREE.Mesh(
+        new THREE.ConeGeometry(0.1, 0.62, 10, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff, transparent: true, opacity: 0.4,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        })
+      );
+      tail.rotation.x = -Math.PI / 2; // apex trails behind
+      tail.position.z = -0.42;
+      group.add(tail);
+      // three motes spiralling around the core
+      const orbit = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const m = new THREE.Mesh(
+          new THREE.SphereGeometry(0.032, 8, 6),
+          new THREE.MeshBasicMaterial({
+            color: 0xffffff, transparent: true, opacity: 0.9,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+          })
+        );
+        const a = (i / 3) * Math.PI * 2;
+        m.position.set(Math.cos(a) * 0.17, Math.sin(a) * 0.17, -0.05 - i * 0.05);
+        orbit.add(m);
+      }
+      group.add(orbit);
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.22, 0.028, 6, 14),
+        new THREE.TorusGeometry(0.22, 0.028, 10, 24),
         new THREE.MeshBasicMaterial({
           color: 0xffffff, transparent: true, opacity: 0.85,
           blending: THREE.AdditiveBlending, depthWrite: false,
@@ -49,16 +76,29 @@ export class Effects {
       ring.visible = false;
       group.add(ring);
       this.scene.add(group);
-      b = { group, core, shell, ring, glow: null, light: null };
+      b = { group, core, shell, tail, orbit, ring, glow: null, light: null };
     }
     b.core.material.color.set(spell.glow);
     b.shell.material.color.set(spell.color);
+    b.tail.material.color.set(spell.color);
+    for (const m of b.orbit.children) m.material.color.set(spell.glow);
     // spell-specific silhouettes
     const id = spell.id;
-    if (id === 'sectum') { b.core.scale.set(1.7, 0.4, 2.6); b.shell.scale.set(1.5, 0.5, 2.0); } // cutting blade
-    else if (id === 'avada') { b.core.scale.set(1.25, 1.25, 2.8); b.shell.scale.set(1.3, 1.3, 2.2); } // heavy curse
-    else if (spell.kind === 'lob') { b.core.scale.set(1, 1, 1); b.shell.scale.set(1, 1, 1); } // tumbling charge
-    else { b.core.scale.set(1, 1, 2.4); b.shell.scale.set(1, 1, 1.9); } // darting bolt
+    b.tail.visible = true;
+    b.orbit.visible = spell.kind !== 'lob';
+    if (id === 'sectum') { // cutting blade: flat, wide, scythe-like
+      b.core.scale.set(1.7, 0.4, 2.6); b.shell.scale.set(1.5, 0.5, 2.0);
+      b.tail.scale.set(1.4, 0.5, 1.2);
+    } else if (id === 'avada') { // heavy curse: long, fat, dragging green fire
+      b.core.scale.set(1.25, 1.25, 2.8); b.shell.scale.set(1.3, 1.3, 2.2);
+      b.tail.scale.set(1.5, 1.5, 1.7);
+    } else if (spell.kind === 'lob') { // tumbling charge: round, no streak
+      b.core.scale.set(1, 1, 1); b.shell.scale.set(1, 1, 1);
+      b.tail.visible = false;
+    } else { // darting bolt
+      b.core.scale.set(1, 1, 2.4); b.shell.scale.set(1, 1, 1.9);
+      b.tail.scale.set(1, 1, 1);
+    }
     b.ring.visible = id === 'expelliarmus' || id === 'petrificus';
     if (b.ring.visible) {
       b.ring.material.color.set(spell.glow);
@@ -236,10 +276,19 @@ export class Effects {
   ensureShield(player) {
     if (!player.shieldMesh) {
       const m = new THREE.Mesh(
-        new THREE.SphereGeometry(1.05, 20, 14),
+        new THREE.SphereGeometry(1.05, 32, 22),
         new THREE.MeshBasicMaterial({ color: 0x77b8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
       );
       m.renderOrder = 6;
+      // faint latitude bands give the bubble visible curvature
+      const bands = new THREE.Mesh(
+        new THREE.SphereGeometry(1.04, 32, 7),
+        new THREE.MeshBasicMaterial({
+          color: 0x9fd0ff, transparent: true, opacity: 0.1, wireframe: true,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        })
+      );
+      m.add(bands);
       this.scene.add(m);
       player.shieldMesh = m;
     }
@@ -388,6 +437,35 @@ export class Effects {
     this.particles.burst({ pos, count: 10, color: 0xfff2b0, color2: 0xffffff, speed: 12, spread: 0.4, dirY: 0.6, life: 0.3, size: 0.3, gravity: 6, drag: 1 });
   }
 
+  // a blink: an arcane streak trailing behind the dash direction
+  dashFX(player, dx, dz) {
+    const base = player.pos.clone().add(new THREE.Vector3(0, 0.9, 0));
+    for (let i = 0; i < 6; i++) {
+      const p = base.clone().add(new THREE.Vector3(-dx * i * 0.34, 0, -dz * i * 0.34));
+      this.particles.puff('glow', {
+        pos: p, life: 0.3, size0: Math.max(0.12, 0.78 - i * 0.1), size1: 0.06,
+        color: 0x9fd0ff, alpha0: 0.6, alpha1: 0, additive: true,
+      });
+    }
+    this.particles.burst({ pos: base, count: 14, color: 0xbfe0ff, color2: 0xffffff, dirX: -dx, dirY: 0.2, dirZ: -dz, speed: 4.5, spread: 0.5, life: 0.4, size: 0.3, gravity: 0, drag: 3 });
+    this.particles.flashLight(base, 0x9fd0ff, 14, 0.16, 8);
+  }
+
+  // a bolt whiffing clean through a blinking wizard
+  dashDodgeFX(victim) {
+    const p = victim.pos.clone().add(new THREE.Vector3(0, 0.9, 0));
+    this.particles.puff('ring', { pos: p, life: 0.3, size0: 0.5, size1: 2.2, color: 0xbfe0ff, alpha0: 0.8, alpha1: 0, additive: true });
+    this.particles.burst({ pos: p, count: 10, color: 0x9fd0ff, color2: 0xffffff, speed: 3, spread: 1, life: 0.35, size: 0.25, gravity: 0, drag: 3 });
+  }
+
+  // a bolt cashing in a combo: shatter (petrified) or crunch (slowed/snared/staggered)
+  comboFX(pos, kind) {
+    const col = kind === 'shatter' ? 0xdde8f2 : 0xffd24a;
+    this.particles.puff('ring', { pos, life: 0.32, size0: 0.4, size1: 2.6, color: col, alpha0: 0.95, alpha1: 0, additive: true });
+    this.particles.burst({ pos, count: 18, color: col, color2: 0xffffff, speed: 6.5, spread: 1, life: 0.42, size: 0.35, gravity: 3, drag: 2 });
+    this.particles.flashLight(pos, col, 22, 0.2, 10);
+  }
+
   // -------------------------------------------------------- on-hit effects ---
   // Third-person feedback every spectator sees: body flash + colored sparks.
   onHit(victim, spell) {
@@ -454,9 +532,11 @@ export class Effects {
   // ----------------------------------------------------- disarmed wand prop ---
   spawnWandDrop(player, dir) {
     this.removeWandDrop(player.wandProp, false);
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.026, 0.5, 6),
-      new THREE.MeshLambertMaterial({ color: 0x3a2512 })
+    const wandCfg = player.char?.skin?.wand;
+    const mesh = makeWand(
+      { len: wandCfg?.len ?? 0.5 },
+      new THREE.MeshLambertMaterial({ color: wandCfg?.color ?? 0x3a2512 }),
+      null, { radialSegs: 10 }
     );
     const start = player.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
     mesh.position.copy(start);
@@ -483,8 +563,7 @@ export class Effects {
     const i = this.wandDrops.indexOf(drop);
     if (i >= 0) this.wandDrops.splice(i, 1);
     this.scene.remove(drop.mesh);
-    drop.mesh.geometry.dispose();
-    drop.mesh.material.dispose();
+    drop.mesh.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
     if (drop.glow) this.particles.releaseSprite(drop.glow);
     if (drop.player.wandProp === drop) drop.player.wandProp = null;
     if (sparkle) {
@@ -544,13 +623,32 @@ export class Effects {
       new THREE.MeshBasicMaterial({ color: 0xa040ff })
     );
     crystal.position.y = 0.8;
+    crystal.scale.set(0.78, 1.15, 0.78); // elongated shard
     group.add(crystal);
+    const shell = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.58),
+      new THREE.MeshBasicMaterial({
+        color: 0xc788ff, transparent: true, opacity: 0.28,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    shell.position.y = 0.8;
+    shell.scale.set(0.78, 1.15, 0.78);
+    crystal.userData.shell = shell;
+    group.add(shell);
     const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.65, 0.25, 8),
+      new THREE.CylinderGeometry(0.5, 0.65, 0.25, 12),
       new THREE.MeshLambertMaterial({ color: 0x222228 })
     );
     base.position.y = 0.12;
     group.add(base);
+    const runes = new THREE.Mesh(
+      new THREE.TorusGeometry(0.56, 0.025, 8, 28),
+      new THREE.MeshBasicMaterial({ color: 0x8a3aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    runes.rotation.x = -Math.PI / 2;
+    runes.position.y = 0.26;
+    group.add(runes);
     group.position.copy(pos);
     this.scene.add(group);
     const glow = this.particles.acquireSprite('glow', 0xaa44ff, 2.2);
@@ -639,8 +737,15 @@ export class Effects {
       }
     }
     if (this.relicFx) {
-      this.relicFx.crystal.rotation.y += dt * 2.5;
-      this.relicFx.crystal.position.y = 0.8 + Math.sin(this.time * 3) * 0.08;
+      const cr = this.relicFx.crystal;
+      cr.rotation.y += dt * 2.5;
+      cr.position.y = 0.8 + Math.sin(this.time * 3) * 0.08;
+      const shell = cr.userData.shell;
+      if (shell) {
+        shell.rotation.y -= dt * 1.4;
+        shell.position.y = cr.position.y;
+        shell.material.opacity = 0.2 + Math.sin(this.time * 5) * 0.1;
+      }
     }
     // dropped wands: tumble, land, then glimmer until picked up / returned
     for (const w of this.wandDrops) {
@@ -691,24 +796,33 @@ export class Effects {
     const bodyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a42 });
     const bellyMat = new THREE.MeshLambertMaterial({ color: 0x77a868 });
     const segs = [];
-    for (let i = 0; i < 6; i++) {
-      const r = 0.16 - i * 0.018;
-      const s = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.07, r), 7, 5), i % 2 ? bellyMat : bodyMat);
-      s.position.set(0, 0.14, -0.16 * i);
+    for (let i = 0; i < 9; i++) { // longer, smoother body taper
+      const r = 0.155 - i * 0.0135;
+      const s = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.05, r), 10, 8), i % 2 ? bellyMat : bodyMat);
+      s.position.set(0, 0.14 - i * 0.004, -0.115 * i);
+      s.scale.set(1, 0.9, 1.3); // overlapping ovals read as one body
       g.add(s);
       segs.push(s);
     }
-    // head: slightly larger, with ember eyes
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6), bodyMat);
-    head.scale.set(1, 0.8, 1.4);
+    // head: slightly larger, with ember eyes and a flicking tongue
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10), bodyMat);
+    head.scale.set(1, 0.75, 1.4);
     head.position.set(0, 0.16, 0.17);
     g.add(head);
     for (const sx of [-0.07, 0.07]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffd34d }));
-      eye.position.set(sx, 0.21, 0.3);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd34d }));
+      eye.position.set(sx, 0.215, 0.3);
       g.add(eye);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 5), new THREE.MeshBasicMaterial({ color: 0x301505 }));
+      pupil.position.set(sx, 0.218, 0.323);
+      g.add(pupil);
     }
+    const tongue = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.14, 5), new THREE.MeshBasicMaterial({ color: 0xd23a4a }));
+    tongue.rotation.x = Math.PI / 2;
+    tongue.position.set(0, 0.15, 0.47);
+    g.add(tongue);
     g.userData.segs = segs;
+    g.userData.tongue = tongue;
     this.scene.add(g);
     return g;
   }
@@ -720,8 +834,11 @@ export class Effects {
     s.wiggleT += dt * 11;
     const segs = m.userData.segs;
     for (let i = 0; i < segs.length; i++) {
-      segs[i].position.x = Math.sin(s.wiggleT - i * 0.9) * 0.085 * (1 + i * 0.25);
+      segs[i].position.x = Math.sin(s.wiggleT - i * 0.62) * 0.07 * (1 + i * 0.18);
     }
+    // tongue tastes the air
+    const tongue = m.userData.tongue;
+    if (tongue) tongue.scale.y = 0.4 + Math.abs(Math.sin(s.wiggleT * 0.7)) * 0.9;
     if (Math.random() < dt * 6) {
       this.particles.burst({
         pos: m.position.clone().add(new THREE.Vector3(0, 0.18, 0)),
@@ -746,9 +863,10 @@ export class Effects {
   spawnDropMesh(item) {
     const g = new THREE.Group();
     if (item.kind === 'wand') {
-      const stick = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.02, 0.035, 0.85, 6),
-        new THREE.MeshLambertMaterial({ color: 0x5a3a1c })
+      const stick = makeWand(
+        { len: 0.85 },
+        new THREE.MeshLambertMaterial({ color: 0x5a3a1c }),
+        null, { radialSegs: 10, thick: 1.5 }
       );
       stick.rotation.z = Math.PI / 2.3;
       stick.position.y = 0.1;
@@ -760,15 +878,21 @@ export class Effects {
       g.add(orb);
     } else {
       const vial = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.09, 0.16, 3, 8),
+        new THREE.CapsuleGeometry(0.09, 0.16, 4, 12),
         new THREE.MeshLambertMaterial({ color: 0xd2304a, emissive: 0x551019 })
       );
       vial.position.y = 0.15;
       g.add(vial);
+      const cork = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.04, 0.05, 8),
+        new THREE.MeshLambertMaterial({ color: 0x8a6a42 })
+      );
+      cork.position.y = 0.305;
+      g.add(cork);
     }
     // soft beacon so loot reads at a glance
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.3, 0.42, 18),
+      new THREE.RingGeometry(0.3, 0.42, 26),
       new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false })
     );
     ring.rotation.x = -Math.PI / 2;

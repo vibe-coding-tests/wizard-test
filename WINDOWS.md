@@ -17,7 +17,7 @@ node --version
 Clone the repo:
 
 ```powershell
-git clone <your-repo-url> wizard-duel
+git clone https://github.com/char-boomer-remakes/wizard-duel.git
 cd wizard-duel
 ```
 

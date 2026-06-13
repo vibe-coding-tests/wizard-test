@@ -13,6 +13,8 @@ synthesized at runtime — no CDN or external assets.
 ## Run it
 
 ```bash
+git clone https://github.com/char-boomer-remakes/wizard-duel.git
+cd wizard-duel
 npm install
 npm start
 ```

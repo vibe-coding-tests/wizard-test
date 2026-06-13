@@ -19,6 +19,8 @@ npm start
 
 That opens `http://localhost:5173` in your browser. Everything runs locally.
 
+On Windows? See [WINDOWS.md](WINDOWS.md) for setup steps.
+
 ## How to play
 
 - **Objective (Cursed Relic):** Death Eaters attack — carry the Relic to site A

@@ -1,7 +1,7 @@
 // Match orchestration: round state machine, economy, Cursed Relic objective,
 // halftime swaps, MVP, deathmatch, spectating, camera, perf governor.
 import * as THREE from 'three';
-import { SPELLS, CHARACTERS, BOT_NAMES, TEAM, TEAM_INFO, otherTeam, ECON, ROUND, DIFFICULTIES, FORMATS, GRENADES, wandById, equipById, charById, aiProfile } from './data.js';
+import { SPELLS, CHARACTERS, BOT_NAMES, TEAM, TEAM_INFO, otherTeam, ECON, ROUND, DIFFICULTIES, FORMATS, GRENADES, EQUIP_EFFECTS, wandById, equipById, charById, aiProfile } from './data.js';
 import { MAP_BUILDERS } from './maps/index.js';
 import { bakeRadar } from './mapbuilder.js';
 import { World } from './world.js';
@@ -25,6 +25,7 @@ export class Game {
     this.settings = app.settings;
 
     this.mode = setup.mode; // 'relic' | 'dm'
+    this.dmBanned = new Set(setup.dmBanned || []);
     this.format = FORMATS.find((f) => f.id === (setup.format || 'mr8'));
     // difficulty: preset axes, or the player's own slider mix
     const preset = DIFFICULTIES.find((d) => d.id === setup.difficulty);
@@ -252,15 +253,25 @@ export class Game {
     p.resetLoadout();
     p.roundPerks();
     p.wand = wandById('holly');
-    p.owned.add('bombarda'); p.charges.bombarda = 2;
-    p.owned.add('lumos'); p.charges.lumos = 2;
-    p.owned.add('fumos'); p.charges.fumos = 1;
-    p.owned.add('incendio'); p.charges.incendio = 1;
-    p.owned.add('petrificus'); p.charges.petrificus = 1;
-    p.owned.add('patronum'); p.charges.patronum = 1;
-    p.owned.add('avada');
-    p.equip.potion = 1;
-    p.equip.finite = 1;
+    const giveSpell = (id, charges = null) => {
+      if (this.dmBanned.has(id)) return;
+      p.owned.add(id);
+      if (charges != null) p.charges[id] = charges;
+    };
+    giveSpell('bombarda', 2);
+    giveSpell('lumos', 2);
+    giveSpell('fumos', 2);
+    giveSpell('incendio', 1);
+    giveSpell('episkey', 2);
+    giveSpell('petrificus', 1);
+    giveSpell('impedimenta', 2);
+    giveSpell('silencio', 1);
+    giveSpell('patronum', 1);
+    giveSpell('serpensortia', 1);
+    giveSpell('avada');
+    if (!this.dmBanned.has('potion')) p.equip.potion = 1;
+    if (!this.dmBanned.has('finite')) p.equip.finite = 1;
+    p.ensureValidSpell();
   }
 
   dmSpawn(p) {
@@ -273,6 +284,8 @@ export class Game {
       if (nearest > 14 * 14 || tries === 11) {
         p.spawnAt(n.x, n.z, rand(0, Math.PI * 2), this.world);
         this.dmLoadout(p);
+        p.spawnProtT = 3;
+        if (p.isHuman) this.hud.notice('Spawn protection — 3s or until you cast', 'info');
         return;
       }
     }
@@ -310,7 +323,7 @@ export class Game {
       price = eq.price;
       apply = () => {
         p.equip[id] = Math.min(eq.max, p.equip[id] + 1);
-        if (id === 'vest') p.vestHP = 60;
+        if (id === 'vest') p.vestHP = EQUIP_EFFECTS.vest.pool;
       };
     }
     price = Math.round(price * (kind === 'equip' ? p.equipPriceMult() : p.priceMult()));
@@ -336,11 +349,15 @@ export class Game {
   damage(victim, attacker, amount, spell, isHS = false, hitPos = null, silent = false) {
     if (!victim.alive || this.over) return;
     if (attacker && attacker !== victim && attacker.team === victim.team) return;
-    // Neville digs in when cornered: 15% less damage below 35% health
-    if (victim.char.id === 'neville' && victim.health <= victim.stats.hp * 0.35) amount *= 0.85;
-    // Dragonhide Vest: soaks 30% of each hit until its pool is spent
+    if (victim.spawnProtT > 0 && attacker && attacker !== victim) {
+      if (attacker.isHuman && !silent) this.hud.notice('Target is spawn-protected', 'info');
+      return;
+    }
+    // Neville digs in when cornered: 12% less damage below 35% health
+    if (victim.char.id === 'neville' && victim.health <= victim.stats.hp * 0.35) amount *= 0.88;
+    // Dragonhide Vest: soaks a portion of each hit until its pool is spent
     if (victim.vestHP > 0 && victim.equip.vest > 0 && amount > 0) {
-      const soaked = Math.min(victim.vestHP, amount * 0.3);
+      const soaked = Math.min(victim.vestHP, amount * EQUIP_EFFECTS.vest.soak);
       amount -= soaked;
       victim.vestHP -= soaked;
       if (victim.vestHP <= 0) {
@@ -354,7 +371,7 @@ export class Game {
     if (victim.equip.felix > 0 && victim.health - amount <= 0) {
       victim.equip.felix = 0;
       amount = Math.max(0, victim.health - 1); // leaves exactly 1 HP
-      victim.slowT = Math.max(victim.slowT, 0.4);
+      victim.slowT = Math.max(victim.slowT, EQUIP_EFFECTS.felix.slow);
       this.effects.felixFX(victim);
       this.audio.play('parry', { pos: victim.pos, vol: 0.9 });
       if (victim.isHuman) { this.hud.notice('FELIX FELICIS — death itself missed you', 'good'); this.hud.refreshEquip(); }
@@ -452,19 +469,19 @@ export class Game {
         attacker.money = clamp(attacker.money + reward, 0, ECON.cap);
         // Lucius: every kill lines the family vault — and buys loyalty
         if (attacker.char.id === 'lucius') {
-          attacker.money = clamp(attacker.money + 150, 0, ECON.cap);
+          attacker.money = clamp(attacker.money + 125, 0, ECON.cap);
           for (const q of this.teamPlayers(attacker.team)) {
             if (q !== attacker && q.alive) q.money = clamp(q.money + 50, 0, ECON.cap);
           }
-          if (attacker.isHuman) this.hud.notice('+150 G — Galleons & Influence', 'good');
+          if (attacker.isHuman) this.hud.notice('+125 G — Galleons & Influence', 'good');
         }
       }
       // Greyback feeds on the kill: health back and a burst of speed
       if (attacker.char.id === 'greyback' && attacker.alive) {
-        attacker.health = Math.min(attacker.stats.hp, attacker.health + 35);
-        attacker.feralT = 4;
+        attacker.health = Math.min(attacker.stats.hp, attacker.health + 30);
+        attacker.feralT = 3.5;
         this.effects.healFX(attacker);
-        if (attacker.isHuman) this.hud.notice('THE HUNGER — +35 HP, speed surge', 'good');
+        if (attacker.isHuman) this.hud.notice('THE HUNGER — +30 HP, speed surge', 'good');
       }
       if (attacker.isHuman) this.audio.ui('kill');
 
@@ -574,7 +591,7 @@ export class Game {
       const prox = clamp(1 - d / radius, 0, 1); // 1 at ground zero
       let dmg = maxDmg * Math.pow(prox, 1.1);
       if (attacker) dmg *= attacker.effPower();
-      if (p.char.id === 'ron') dmg *= 0.75;
+      if (p.char.id === 'ron') dmg *= 0.8;
       if (p.disc?.blastResist) dmg *= p.disc.blastResist;
 
       // blast knockback scaled by distance; near-center victims are bowled over
@@ -1114,7 +1131,8 @@ export class Game {
     }
 
     // human input
-    if (this.input.locked && !this.hud.buyOpen) this.handleHumanInput(dt);
+    if (!this.human.alive) this.handleHumanInput(dt);
+    else if (this.input.locked && !this.hud.buyOpen) this.handleHumanInput(dt);
     else if (this.human.alive) {
       const c = this.human.ctrl;
       if (!this.input.locked) { c.moveX = 0; c.moveZ = 0; c.castHeld = false; c.altHeld = false; c.jump = false; c.useHeld = false; }
@@ -1251,8 +1269,14 @@ export class Game {
 
   cycleSpectate(dir) {
     const mates = this.players.filter((q) => q.alive && q.team === this.human.team);
-    if (!mates.length) return;
-    this.spectIdx = (this.spectIdx + dir + mates.length) % mates.length;
+    const pool = mates.length ? mates : (this.mode === 'dm' ? this.players.filter((q) => q.alive && q !== this.human) : []);
+    if (!pool.length) {
+      this.hud.spectating('No living teammates');
+      return;
+    }
+    this.deathCamT = 0;
+    this.hud.closeDeath();
+    this.spectIdx = (this.spectIdx + dir + pool.length) % pool.length;
   }
 
   updateCamera(dt) {
@@ -1264,12 +1288,13 @@ export class Game {
       target = p.eyePos();
     } else {
       this.deathCamT -= dt;
-      if (this.deathCamT > 0 || this.mode === 'dm') {
+      if (this.deathCamT > 0) {
         target = new THREE.Vector3(p.pos.x, p.pos.y + 1.2, p.pos.z);
       } else {
         const mates = this.players.filter((q) => q.alive && q.team === p.team);
-        if (mates.length) {
-          const s = mates[this.spectIdx % mates.length];
+        const pool = mates.length ? mates : (this.mode === 'dm' ? this.players.filter((q) => q.alive && q !== p) : []);
+        if (pool.length) {
+          const s = pool[this.spectIdx % pool.length];
           target = s.eyePos();
           yaw = s.yaw; pitch = s.pitch;
           this.hud.spectating(s.name);

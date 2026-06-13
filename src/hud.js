@@ -553,7 +553,7 @@ export class HUD {
       }
     } else {
       for (const eq of EQUIPMENT) {
-        const price = Math.round(eq.price * p.priceMult());
+        const price = Math.round(eq.price * p.equipPriceMult());
         const owned = p.equip[eq.id] >= eq.max;
         card({
           icon: eq.icon, name: eq.name, role: 'Equipment', price,

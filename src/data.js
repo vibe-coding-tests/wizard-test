@@ -33,114 +33,121 @@ export const otherTeam = (t) => (t === TEAM.ORDER ? TEAM.DEATH : TEAM.ORDER);
 export const SPELLS = {
   stupefy: {
     id: 'stupefy', name: 'Stupefy', kind: 'bolt', slot: 1, icon: 'bolt',
-    dmg: 27, interval: 0.26, speed: 46, mana: 8, spread: [0.35, 2.3],
-    recoil: 0.016, bloom: 0.55,
-    falloff: [25, 60, 0.7], hs: 2, kb: 2.4, stagger: 0.16, killReward: 300, price: 0,
+    dmg: 26, interval: 0.25, speed: 48, mana: 7, spread: [0.32, 2.15],
+    recoil: 0.015, bloom: 0.5,
+    falloff: [28, 64, 0.72], hs: 2, kb: 2.25, stagger: 0.14, killReward: 300, price: 0,
     color: 0xff3b4a, glow: 0xff97a3,
     role: 'Rifle', desc: 'Rapid red stunner. Four body hits drop a full-health wizard.',
   },
   avada: {
     id: 'avada', name: 'Avada Kedavra', kind: 'bolt', slot: 2, icon: 'skull',
-    dmg: 250, interval: 1.4, charge: 1.15, speed: 82, mana: 45, spread: [0.04, 5.0],
-    recoil: 0.055, bloom: 0, zoom: 0.55,
-    falloff: null, hs: 1, kb: 3.5, killReward: 150, price: 4750, chargeSlow: 0.55, // hs 1: it kills on ANY contact — no headshot math needed
+    dmg: 250, interval: 1.55, charge: 1.35, speed: 78, mana: 55, spread: [0.04, 5.2],
+    recoil: 0.058, bloom: 0, zoom: 0.55,
+    falloff: null, hs: 1, kb: 3.7, killReward: 150, price: 5400, chargeSlow: 0.52, // hs 1: it kills on ANY contact — no headshot math needed
     color: 0x37ff6e, glow: 0xa9ffc4,
-    role: 'AWP', desc: 'Hold to charge — your focus narrows (scope) — release the Killing Curse. One hit.',
+    role: 'AWP', desc: 'Hold to charge — your focus narrows (scope) — release the Killing Curse. One hit, loud and expensive.',
   },
   sectum: {
     id: 'sectum', name: 'Sectumsempra', kind: 'bolt', slot: 1, icon: 'slash',
-    dmg: 22, interval: 0.3, speed: 52, mana: 9, spread: [0.3, 2.4],
-    recoil: 0.02, bloom: 0.7,
-    falloff: [22, 55, 0.72], hs: 2, kb: 1.4, bleed: [4, 3], killReward: 300, price: 0,
+    dmg: 21, interval: 0.29, speed: 54, mana: 8.5, spread: [0.28, 2.25],
+    recoil: 0.019, bloom: 0.65,
+    falloff: [24, 58, 0.74], hs: 2, kb: 1.3, bleed: [3.5, 3.2], killReward: 300, price: 0,
     color: 0xd9c9ff, glow: 0xffffff, exclusive: 'snape', replaces: 'stupefy',
-    role: 'Rifle+', desc: 'Cutting curse, "for enemies". Victims bleed for 3s.',
+    role: 'Rifle+', desc: 'Cutting curse, "for enemies". Victims bleed for 3.2s.',
   },
   expelliarmus: {
     id: 'expelliarmus', name: 'Expelliarmus', kind: 'bolt', slot: 3, icon: 'swirl',
-    dmg: 6, interval: 0.95, speed: 54, mana: 18, spread: [0.4, 2.2],
-    recoil: 0.012, bloom: 0.3,
-    falloff: null, hs: 1, kb: 2.0, disarm: 2.0, killReward: 300, price: 0,
+    dmg: 3, interval: 0.95, speed: 58, mana: 16, spread: [0.38, 2.1],
+    recoil: 0.011, bloom: 0.28,
+    falloff: null, hs: 1, kb: 1.8, disarm: 2.2, killReward: 300, price: 0,
     color: 0xffb347, glow: 0xffe2ad,
-    role: 'Utility', desc: 'Knocks the wand away: target cannot cast for 2s.',
+    role: 'Utility', desc: 'Knocks the wand away: target cannot cast for 2.2s unless they recover it.',
   },
   petrificus: {
     id: 'petrificus', name: 'Petrificus Totalus', kind: 'bolt', slot: 3, icon: 'bind',
-    dmg: 4, interval: 1.1, speed: 40, mana: 20, spread: [0.35, 2.0],
-    recoil: 0.014, bloom: 0.4,
-    falloff: null, hs: 1, freeze: 1.6, charges: 1, killReward: 300, price: 600,
+    dmg: 0, interval: 1.05, speed: 44, mana: 20, spread: [0.34, 1.9],
+    recoil: 0.013, bloom: 0.35,
+    falloff: null, hs: 1, freeze: 1.45, charges: 1, killReward: 300, price: 500,
     color: 0x9fb6c8, glow: 0xe2eef8,
-    role: 'Body-Bind', desc: 'Full Body-Bind: target is a statue for 1.6s. A solid hit shatters the bind.',
+    role: 'Body-Bind', desc: 'Full Body-Bind: target is a statue for 1.45s. A solid hit shatters the bind.',
   },
   impedimenta: {
     id: 'impedimenta', name: 'Impedimenta', kind: 'bolt', slot: 3, icon: 'slow',
-    dmg: 12, interval: 0.9, speed: 50, mana: 16, spread: [0.35, 2.1],
-    recoil: 0.012, bloom: 0.35,
-    falloff: null, hs: 1, kb: 2.8, snare: 2.2, charges: 2, killReward: 300, price: 400,
+    dmg: 5, interval: 0.82, speed: 54, mana: 15, spread: [0.34, 2.0],
+    recoil: 0.011, bloom: 0.32,
+    falloff: null, hs: 1, kb: 2.5, snare: 2.15, charges: 2, killReward: 300, price: 400,
     color: 0x58c8ff, glow: 0xc6ecff,
-    role: 'Jinx', desc: 'Knockback jinx: shoves the target and SNARES them — 45% slower, no jumping, for 2.2s.',
+    role: 'Jinx', desc: 'Knockback jinx: shoves the target and SNARES them — 45% slower, no jumping, for 2.15s.',
   },
   silencio: {
     id: 'silencio', name: 'Silencio', kind: 'bolt', slot: 3, icon: 'mute',
-    dmg: 4, interval: 1.0, speed: 56, mana: 18, spread: [0.3, 2.0],
-    recoil: 0.012, bloom: 0.3,
-    falloff: null, hs: 1, kb: 0.6, silence: 2.4, charges: 1, killReward: 300, price: 500,
+    dmg: 2, interval: 0.95, speed: 58, mana: 17, spread: [0.3, 1.9],
+    recoil: 0.011, bloom: 0.28,
+    falloff: null, hs: 1, kb: 0.5, silence: 1.8, charges: 1, killReward: 300, price: 400,
     color: 0xc886ff, glow: 0xeed4ff,
-    role: 'Hex', desc: 'Steals the voice: no casting, no Protego for 2.4s. They can still run — and so can you.',
+    role: 'Hex', desc: 'Steals the voice: no casting, no Protego for 1.8s. They can still run — and so can you.',
   },
   serpensortia: {
     id: 'serpensortia', name: 'Serpensortia', kind: 'summon', slot: 5, icon: 'snake',
-    dmg: 24, interval: 1.2, speed: 0, mana: 22, spread: [0, 0],
-    charges: 1, summon: { hp: 30, speed: 7.2, life: 12, bite: 24, slow: 0.6, range: 22 }, killReward: 300, price: 550,
+    dmg: 20, interval: 1.15, speed: 0, mana: 20, spread: [0, 0],
+    charges: 1, summon: { hp: 26, speed: 7.8, life: 10, bite: 20, slow: 0.8, range: 24 }, killReward: 300, price: 500,
     color: 0x3fae5a, glow: 0x9fe8b4,
-    role: 'Summon', desc: 'Conjure a serpent that hunts the nearest enemy and strikes once. Can be shot down.',
+    role: 'Summon', desc: 'Conjure a fast serpent that hunts the nearest enemy and strikes once. Can be shot down.',
   },
   bombarda: {
     id: 'bombarda', name: 'Bombarda', kind: 'lob', slot: 4, icon: 'bomb',
-    dmg: 96, radius: 5.2, interval: 1.0, speed: 17.5, mana: 26, spread: [1, 2],
-    charges: 2, self: true, killReward: 300, price: 300,
+    dmg: 72, radius: 4.7, interval: 1.05, speed: 18, mana: 26, spread: [1, 2],
+    charges: 2, self: true, killReward: 300, price: 550,
     color: 0xff8a2a, glow: 0xffc890,
-    role: 'HE Grenade', desc: 'Lobbed blasting charge. Area damage — hurts you too.',
+    role: 'HE Grenade', desc: 'Lobbed blasting charge. Big shove, softer lethal radius — hurts you too.',
   },
   lumos: {
     id: 'lumos', name: 'Lumos Maxima', kind: 'lob', slot: 5, icon: 'sun',
-    dmg: 0, radius: 16, interval: 0.8, speed: 16, mana: 14, spread: [1, 2],
-    charges: 2, flash: 2.6, killReward: 300, price: 200,
+    dmg: 0, radius: 15, interval: 0.78, speed: 16.5, mana: 13, spread: [1, 2],
+    charges: 2, flash: 2.2, killReward: 300, price: 250,
     color: 0xffffff, glow: 0xffffff,
     role: 'Flashbang', desc: 'Blinding burst of light. Look away!',
   },
   fumos: {
     id: 'fumos', name: 'Fumos', kind: 'lob', slot: 5, icon: 'cloud',
-    dmg: 0, radius: 3.8, interval: 0.8, speed: 16, mana: 16, spread: [1, 2],
-    charges: 1, smoke: 12, killReward: 300, price: 300,
+    dmg: 0, radius: 4.2, interval: 0.78, speed: 16.5, mana: 15, spread: [1, 2],
+    charges: 2, smoke: 10, killReward: 300, price: 300,
     color: 0x9fb2c8, glow: 0xcfd8e6,
-    role: 'Smoke', desc: 'Dense smokescreen for 12 seconds. Blocks sight lines.',
+    role: 'Smoke', desc: 'Dense smokescreen for 10 seconds. Blocks sight lines.',
   },
   incendio: {
     id: 'incendio', name: 'Incendio', kind: 'lob', slot: 5, icon: 'flame',
-    dmg: 0, radius: 3.1, interval: 0.9, speed: 16.5, mana: 20, spread: [1, 2],
-    charges: 1, fire: [6, 14], self: true, killReward: 300, price: 400,
+    dmg: 0, radius: 3.3, interval: 0.88, speed: 17, mana: 19, spread: [1, 2],
+    charges: 1, fire: [5.5, 12], self: true, killReward: 300, price: 450,
     color: 0xff5a1f, glow: 0xffae6e,
-    role: 'Molotov', desc: 'Pool of cursed fire: 14 dmg/s for 6s. Denies ground.',
+    role: 'Molotov', desc: 'Pool of cursed fire: 12 dmg/s for 5.5s. Denies ground.',
   },
   patronum: {
     id: 'patronum', name: 'Expecto Patronum', kind: 'lob', slot: 5, icon: 'stag',
-    dmg: 0, radius: 0, interval: 0.9, speed: 15, mana: 24, spread: [1, 2],
-    charges: 1, ward: [6, 4.2, 3.0], killReward: 300, price: 500,
+    dmg: 0, radius: 0, interval: 0.88, speed: 15.5, mana: 22, spread: [1, 2],
+    charges: 1, ward: [6.5, 4.6, 3.0], killReward: 300, price: 450,
     color: 0xcfe8ff, glow: 0xffffff,
-    role: 'Ward Wall', desc: 'Conjure a silver guardian wall for 6s. Enemy spells cannot pass.',
+    role: 'Ward Wall', desc: 'Conjure a silver guardian wall for 6.5s. Enemy spells cannot pass.',
+  },
+  episkey: {
+    id: 'episkey', name: 'Episkey', kind: 'lob', slot: 5, icon: 'potion',
+    dmg: 0, radius: 4.5, interval: 0.82, speed: 16, mana: 18, spread: [1, 2],
+    charges: 2, heal: 28, killReward: 300, price: 300,
+    color: 0x7dffa0, glow: 0xd6ffe4,
+    role: 'Support Heal', desc: 'Lobbed healing charm. Restores nearby allies, but does nothing to enemies.',
   },
   protego: {
     id: 'protego', name: 'Protego', kind: 'shield', slot: 0, icon: 'shield',
-    dmg: 0, mana: 0, drain: 13, drainHit: 0.5, speedMult: 0.55, price: 0,
-    parry: 0.25, color: 0x6fb4ff, glow: 0xbfe0ff,
+    dmg: 0, mana: 0, drain: 12, drainHit: 0.45, speedMult: 0.6, price: 0,
+    parry: 0.22, color: 0x6fb4ff, glow: 0xbfe0ff,
     role: 'Shield', desc: 'Hold RIGHT CLICK to block spells. Raise it at the last instant to REFLECT a bolt.',
   },
 };
 
-export const GRENADES = ['bombarda', 'lumos', 'fumos', 'incendio', 'patronum', 'serpensortia'];
+export const GRENADES = ['bombarda', 'lumos', 'fumos', 'incendio', 'patronum', 'serpensortia', 'episkey'];
 export const SLOT3 = ['expelliarmus', 'petrificus', 'impedimenta', 'silencio'];
 export const HEXES = ['expelliarmus', 'petrificus', 'impedimenta', 'silencio']; // the disable school
-export const SLOT5 = ['lumos', 'fumos', 'incendio', 'patronum', 'serpensortia'];
+export const SLOT5 = ['lumos', 'fumos', 'incendio', 'patronum', 'serpensortia', 'episkey'];
 
 // -------------------------------------------------------------- HIT ZONES ---
 // CS 1.6-style locational damage. Head uses the spell's own hs multiplier
@@ -161,8 +168,8 @@ export const HITZONES = {
 export const CHARACTERS = [
   {
     id: 'harry', name: 'Harry Potter', side: 'order', short: 'Harry',
-    hp: 100, speed: 5.5, power: 1.0, cast: 1.0, mana: 100, regen: 4,
-    perk: 'The Disarming Hero', perkDesc: 'Expelliarmus costs 50% less mana and recovers 60% faster.',
+    hp: 100, speed: 5.6, power: 1.0, cast: 1.02, mana: 100, regen: 4.2,
+    perk: 'The Disarming Hero', perkDesc: 'Expelliarmus costs 40% less mana and recovers 45% faster.',
     fav: 'lumos',
     skin: { hair: 0x1f1a14, glasses: true, scar: true, messy: true, accent: 0x8a1e1e, scarf: [0x8a1e1e, 0xd6a531], wand: { len: 0.5, color: 0x6b4226 } },
     ai: { aggro: 0.85, range: 12, util: 0.6, lurk: 0.05, snipe: 0.2, team: 0.7, dodge: 0.95, disc: 'duelist' },
@@ -170,7 +177,7 @@ export const CHARACTERS = [
   },
   {
     id: 'hermione', name: 'Hermione Granger', side: 'order', short: 'Hermione',
-    hp: 80, speed: 5.7, power: 0.95, cast: 1.18, mana: 110, regen: 5,
+    hp: 85, speed: 5.6, power: 0.94, cast: 1.18, mana: 115, regen: 5.2,
     perk: 'Time-Turner Focus', perkDesc: 'Recharge (R) refills mana twice as fast.',
     fav: 'impedimenta',
     skin: { hair: 0x6e4a23, bushy: true, accent: 0x8a1e1e, satchel: true, timeTurner: true, wand: { len: 0.48, color: 0x7a5a33 } },
@@ -179,8 +186,8 @@ export const CHARACTERS = [
   },
   {
     id: 'ron', name: 'Ron Weasley', side: 'order', short: 'Ron',
-    hp: 115, speed: 5.3, power: 0.95, cast: 0.95, mana: 90, regen: 3.5,
-    perk: "Keeper's Grit", perkDesc: 'Takes 25% less damage from explosions and fire.',
+    hp: 112, speed: 5.25, power: 0.96, cast: 0.97, mana: 95, regen: 3.8,
+    perk: "Keeper's Grit", perkDesc: 'Takes 20% less damage from explosions and fire.',
     fav: 'patronum',
     skin: { hair: 0xb3502a, accent: 0x6e2230, scarf: [0x6e2230, 0xd6a531], patch: true, wand: { len: 0.46, color: 0x8a5a33 } },
     ai: { aggro: 0.35, range: 14, util: 0.7, lurk: 0.15, snipe: 0.1, team: 0.85, dodge: 0.45, disc: 'warden' },
@@ -188,7 +195,7 @@ export const CHARACTERS = [
   },
   {
     id: 'luna', name: 'Luna Lovegood', side: 'order', short: 'Luna',
-    hp: 90, speed: 5.5, power: 0.9, cast: 1.05, mana: 120, regen: 6,
+    hp: 90, speed: 5.65, power: 0.92, cast: 1.08, mana: 118, regen: 5.8,
     perk: 'Spectrespecs', perkDesc: '60% flash resistance. Enemy radar pings linger 2s longer.',
     fav: 'fumos',
     skin: { hair: 0xe6d8a8, long: true, accent: 0x2b4a8a, spectrespecs: true, radish: true, wand: { len: 0.5, color: 0xcbb98a } },
@@ -197,7 +204,7 @@ export const CHARACTERS = [
   },
   {
     id: 'snape', name: 'Severus Snape', side: 'death', short: 'Snape',
-    hp: 95, speed: 5.4, power: 1.05, cast: 1.0, mana: 100, regen: 4,
+    hp: 96, speed: 5.35, power: 1.04, cast: 1.02, mana: 105, regen: 4.3,
     perk: 'The Half-Blood Prince', perkDesc: 'Exclusive: Sectumsempra replaces Stupefy — a bleeding bolt.',
     fav: 'silencio',
     skin: { hair: 0x101010, curtains: true, accent: 0x14181c, collar: true, buttons: true, wand: { len: 0.52, color: 0x14110d } },
@@ -206,8 +213,8 @@ export const CHARACTERS = [
   },
   {
     id: 'bellatrix', name: 'Bellatrix Lestrange', side: 'death', short: 'Bellatrix',
-    hp: 75, speed: 5.7, power: 1.2, cast: 1.05, mana: 95, regen: 4,
-    perk: 'Crucio', perkDesc: 'Your bolt hits slow victims by 25% for 1.2s.',
+    hp: 82, speed: 5.8, power: 1.13, cast: 1.05, mana: 95, regen: 4,
+    perk: 'Crucio', perkDesc: 'Your bolt hits slow victims by 30% for 1.2s.',
     fav: 'incendio',
     skin: { hair: 0x140d0d, wild: true, accent: 0x2a1230, corset: true, locket: true, wand: { len: 0.44, color: 0x231811 } },
     ai: { aggro: 1.0, range: 7, util: 0.5, lurk: 0.0, snipe: 0.1, team: 0.4, dodge: 1.1, disc: 'duelist' },
@@ -215,8 +222,8 @@ export const CHARACTERS = [
   },
   {
     id: 'voldemort', name: 'Lord Voldemort', side: 'death', short: 'Voldemort',
-    hp: 95, speed: 4.7, power: 1.3, cast: 0.95, mana: 130, regen: 5,
-    perk: 'Master of Death', perkDesc: 'Avada Kedavra charges 35% faster and costs 20% less.',
+    hp: 96, speed: 4.75, power: 1.2, cast: 0.98, mana: 125, regen: 5.2,
+    perk: 'Master of Death', perkDesc: 'Avada Kedavra charges 28% faster and costs 15% less.',
     fav: 'serpensortia',
     skin: { hair: null, pale: true, slits: true, accent: 0x3a4438, noseSlits: true, clasp: true, wand: { len: 0.58, color: 0xded7c4 } },
     ai: { aggro: 0.45, range: 30, util: 0.6, lurk: 0.3, snipe: 1.0, team: 0.3, dodge: 0.5, disc: 'duelist' },
@@ -224,8 +231,8 @@ export const CHARACTERS = [
   },
   {
     id: 'draco', name: 'Draco Malfoy', side: 'death', short: 'Draco',
-    hp: 90, speed: 5.5, power: 1.0, cast: 1.0, mana: 100, regen: 4,
-    perk: 'Malfoy Coffers', perkDesc: '20% discount on every purchase.',
+    hp: 92, speed: 5.55, power: 0.99, cast: 1.02, mana: 105, regen: 4.4,
+    perk: 'Malfoy Coffers', perkDesc: '15% discount on every purchase.',
     fav: 'petrificus',
     skin: { hair: 0xeae2c8, slick: true, accent: 0x1f4d33, badge: true, ring: true, wand: { len: 0.5, color: 0x4a3b2e, grip: 0xc0c4cc } },
     ai: { aggro: 0.45, range: 16, util: 1.0, lurk: 0.4, snipe: 0.35, team: 0.6, dodge: 0.75, disc: 'phantom' },
@@ -233,8 +240,8 @@ export const CHARACTERS = [
   },
   {
     id: 'dumbledore', name: 'Albus Dumbledore', side: 'order', short: 'Dumbledore',
-    hp: 90, speed: 4.8, power: 1.15, cast: 1.05, mana: 140, regen: 6.5,
-    perk: 'For the Greater Good', perkDesc: 'Protego drains 40% less mana and your perfect-parry window is 50% wider.',
+    hp: 92, speed: 4.85, power: 1.12, cast: 1.08, mana: 135, regen: 6.2,
+    perk: 'For the Greater Good', perkDesc: 'Protego drains 35% less mana and your perfect-parry window is 35% wider.',
     fav: 'patronum',
     skin: { hair: 0xdfd9cf, beard: true, halfMoon: true, accent: 0x4a2a6e, startrim: true, wand: { len: 0.58, color: 0x3d2c1c } },
     ai: { aggro: 0.35, range: 22, util: 1.3, lurk: 0.1, snipe: 0.4, team: 0.8, dodge: 0.5, disc: 'warden' },
@@ -242,8 +249,8 @@ export const CHARACTERS = [
   },
   {
     id: 'mcgonagall', name: 'Minerva McGonagall', side: 'order', short: 'McGonagall',
-    hp: 85, speed: 5.4, power: 1.05, cast: 1.12, mana: 105, regen: 4.5,
-    perk: 'Transfiguration Mistress', perkDesc: 'Your Petrificus holds 40% longer and slot-3 hexes carry +1 charge.',
+    hp: 88, speed: 5.35, power: 1.02, cast: 1.12, mana: 110, regen: 4.8,
+    perk: 'Transfiguration Mistress', perkDesc: 'Your Petrificus holds 30% longer and slot-3 hexes carry +1 charge.',
     fav: 'petrificus',
     skin: { hair: 0x3c3530, bun: true, squareGlasses: true, accent: 0x14532d, tartan: true, witchHat: true, wand: { len: 0.5, color: 0x52391f } },
     ai: { aggro: 0.5, range: 16, util: 1.1, lurk: 0.1, snipe: 0.3, team: 0.85, dodge: 0.65, disc: 'hexer' },
@@ -251,8 +258,8 @@ export const CHARACTERS = [
   },
   {
     id: 'ginny', name: 'Ginny Weasley', side: 'order', short: 'Ginny',
-    hp: 85, speed: 5.8, power: 1.1, cast: 1.05, mana: 95, regen: 4,
-    perk: 'Bat-Bogey Barrage', perkDesc: 'Bombarda blasts 25% wider and every round starts with a free Impedimenta charge.',
+    hp: 88, speed: 5.75, power: 1.08, cast: 1.06, mana: 98, regen: 4.2,
+    perk: 'Bat-Bogey Barrage', perkDesc: 'Bombarda blasts 20% wider and every round starts with a free Impedimenta charge.',
     fav: 'bombarda',
     skin: { hair: 0xc2401f, pony: true, accent: 0x6e2230, pads: true, wand: { len: 0.46, color: 0x7a4a2a } },
     ai: { aggro: 0.9, range: 10, util: 0.9, lurk: 0.05, snipe: 0.15, team: 0.6, dodge: 1.0, disc: 'duelist' },
@@ -260,8 +267,8 @@ export const CHARACTERS = [
   },
   {
     id: 'neville', name: 'Neville Longbottom', side: 'order', short: 'Neville',
-    hp: 125, speed: 5.0, power: 1.0, cast: 0.9, mana: 85, regen: 3.5,
-    perk: "Gryffindor's Courage", perkDesc: 'Below 35% health you deal 25% more damage and take 15% less.',
+    hp: 118, speed: 5.05, power: 0.98, cast: 0.93, mana: 90, regen: 3.8,
+    perk: "Gryffindor's Courage", perkDesc: 'Below 35% health you deal 20% more damage and take 12% less.',
     fav: 'incendio',
     skin: { hair: 0x6a4a2c, sidePart: true, accent: 0x8a1e1e, sprig: true, wand: { len: 0.47, color: 0x9a7146 } },
     ai: { aggro: 0.45, range: 12, util: 0.8, lurk: 0.1, snipe: 0.05, team: 0.9, dodge: 0.4, disc: 'warden' },
@@ -269,8 +276,8 @@ export const CHARACTERS = [
   },
   {
     id: 'lucius', name: 'Lucius Malfoy', side: 'death', short: 'Lucius',
-    hp: 85, speed: 5.3, power: 1.05, cast: 1.05, mana: 110, regen: 4.5,
-    perk: 'Galleons & Influence', perkDesc: 'Your kills pay +150 G, and every living squadmate collects +50 G.',
+    hp: 88, speed: 5.25, power: 1.04, cast: 1.06, mana: 112, regen: 4.8,
+    perk: 'Galleons & Influence', perkDesc: 'Your kills pay +125 G, and every living squadmate collects +50 G.',
     fav: 'serpensortia',
     skin: { hair: 0xe8e3d0, long: true, accent: 0x101418, cane: true, furTrim: true, wand: { len: 0.54, color: 0x1c1812, grip: 0xcfd6da } },
     ai: { aggro: 0.35, range: 18, util: 1.2, lurk: 0.3, snipe: 0.4, team: 0.7, dodge: 0.6, disc: 'phantom' },
@@ -278,8 +285,8 @@ export const CHARACTERS = [
   },
   {
     id: 'greyback', name: 'Fenrir Greyback', side: 'death', short: 'Greyback',
-    hp: 130, speed: 5.9, power: 1.1, cast: 0.8, mana: 70, regen: 3,
-    perk: 'The Hunger', perkDesc: 'Kills feed you: +35 HP and +15% move speed for 4s.',
+    hp: 120, speed: 5.75, power: 1.06, cast: 0.85, mana: 75, regen: 3.2,
+    perk: 'The Hunger', perkDesc: 'Kills feed you: +30 HP and +12% move speed for 3.5s.',
     fav: 'incendio',
     skin: { hair: 0x8d8578, mane: true, scarred: true, accent: 0x3a2e24, fur: true, claws: true, wand: { len: 0.42, color: 0x4a3424 } },
     ai: { aggro: 1.0, range: 5, util: 0.3, lurk: 0.25, snipe: 0.0, team: 0.3, dodge: 0.9, disc: 'duelist' },
@@ -287,8 +294,8 @@ export const CHARACTERS = [
   },
   {
     id: 'umbridge', name: 'Dolores Umbridge', side: 'death', short: 'Umbridge',
-    hp: 95, speed: 5.1, power: 0.95, cast: 1.1, mana: 115, regen: 5,
-    perk: 'Ministry Surveillance', perkDesc: 'Hex hits brand victims on the squad radar for 4s, and Silencio lasts 50% longer.',
+    hp: 96, speed: 5.05, power: 0.96, cast: 1.11, mana: 118, regen: 5.2,
+    perk: 'Ministry Surveillance', perkDesc: 'Hex hits brand victims on the squad radar for 4s, and Silencio lasts 35% longer.',
     fav: 'silencio',
     skin: { hair: 0x8a6b50, curls: true, accent: 0xd55a9e, bow: true, brooch: true, wand: { len: 0.4, color: 0x70513a } },
     ai: { aggro: 0.25, range: 17, util: 1.4, lurk: 0.2, snipe: 0.2, team: 0.5, dodge: 0.5, disc: 'hexer' },
@@ -296,7 +303,7 @@ export const CHARACTERS = [
   },
   {
     id: 'wormtail', name: 'Peter Pettigrew', side: 'death', short: 'Wormtail',
-    hp: 80, speed: 5.6, power: 0.9, cast: 1.0, mana: 90, regen: 4,
+    hp: 82, speed: 5.7, power: 0.9, cast: 1.03, mana: 92, regen: 4.2,
     perk: 'Animagus Instincts', perkDesc: 'Your footsteps make no sound and every round starts with an Invisibility Cloak.',
     fav: 'fumos',
     skin: { hair: 0x9a8a72, balding: true, hunched: true, accent: 0x4e4438, silverHand: true, wand: { len: 0.4, color: 0x6b5a44 } },
@@ -322,25 +329,36 @@ export const BOT_NAMES = {
 
 // ----------------------------------------------------------------- WANDS ---
 export const WANDS = [
-  { id: 'training', name: 'Training Wand', price: 0, power: 0.8, cast: 1.0, spread: 1.5, manaMult: 1.0, desc: 'School-issue practice wand. Weak, wobbly, free.' },
-  { id: 'holly', name: 'Holly & Phoenix Feather', price: 1500, power: 1.0, cast: 1.05, spread: 1.0, manaMult: 1.0, desc: 'The balanced classic. Stupefy hits its 4-shot kill.' },
-  { id: 'vine', name: 'Vine Wood & Dragon Heartstring', price: 2000, power: 0.95, cast: 1.15, spread: 0.55, manaMult: 1.0, desc: 'Surgical: tight spread, quick casts, slightly soft hits.' },
-  { id: 'walnut', name: 'Walnut & Dragon Heartstring', price: 2300, power: 1.15, cast: 1.0, spread: 1.15, manaMult: 1.3, desc: 'Brutal damage, thirsty on mana, a bit wild.' },
-  { id: 'elder', name: 'The Elder Wand', price: 4000, power: 1.28, cast: 1.08, spread: 0.7, manaMult: 0.9, desc: 'The Deathstick. Best at everything, priced like it.' },
+  { id: 'training', name: 'Training Wand', price: 0, power: 0.84, cast: 0.98, spread: 1.35, manaMult: 1.0, castPoint: { fwd: 0.45, right: 0.13, up: -0.16 }, desc: 'School-issue practice wand. Forgiving enough to fight, still clearly outclassed.' },
+  { id: 'holly', name: 'Holly & Phoenix Feather', price: 1500, power: 1.0, cast: 1.06, spread: 1.0, manaMult: 1.0, castPoint: { fwd: 0.5, right: 0.16, up: -0.14 }, desc: 'The balanced classic. Reliable cast point, no special weakness.' },
+  { id: 'vine', name: 'Vine Wood & Dragon Heartstring', price: 1800, power: 0.95, cast: 1.12, spread: 0.65, manaMult: 1.0, hexMana: 0.82, castPoint: { fwd: 0.62, right: 0.1, up: -0.1 }, desc: 'Surgical control: tight spread and cheaper hexes, with slightly softer hits.' },
+  { id: 'walnut', name: 'Walnut & Dragon Heartstring', price: 2200, power: 1.1, cast: 0.98, spread: 1.15, manaMult: 1.18, lobRadius: 1.1, castPoint: { fwd: 0.48, right: 0.2, up: -0.18 }, desc: 'Battle wand: hard hits and wider lob magic, paid for with accuracy and mana.' },
+  { id: 'elder', name: 'The Elder Wand', price: 4600, power: 1.16, cast: 1.06, spread: 0.85, manaMult: 1.08, castPoint: { fwd: 0.72, right: 0.14, up: -0.08 }, desc: 'Long reach and elite dueling stats, with enough mana tax to keep it honest.' },
 ];
 
 export const wandById = (id) => WANDS.find((w) => w.id === id);
 
 // ------------------------------------------------------------- EQUIPMENT ---
+export const EQUIP_EFFECTS = {
+  potion: { duration: 2.75, healPerSecond: 20 },
+  broom: { duration: 2.4, speedMult: 1.55 },
+  cloak: { duration: 5.2 },
+  apparate: { distance: 7.5 },
+  finite: {},
+  vest: { pool: 55, soak: 0.25 },
+  felix: { slow: 0.5 },
+  portkey: { channel: 1.2 },
+};
+
 export const EQUIPMENT = [
-  { id: 'potion', name: 'Healing Potion', price: 350, action: 'potion', max: 1, icon: 'potion', desc: 'Restores 50 HP over 2.5s.' },
-  { id: 'broom', name: 'Broomstick', price: 400, action: 'broom', max: 2, icon: 'broom', desc: 'Hold to FLY for up to 2.2s: steer where you look, Space climbs, Ctrl dives. Two mounts.' },
-  { id: 'cloak', name: 'Invisibility Cloak', price: 400, action: 'cloak', max: 1, icon: 'cloak', desc: 'Vanish for 6s. Casting breaks it.' },
-  { id: 'apparate', name: 'Apparition Charm', price: 500, action: 'apparate', max: 1, icon: 'blink', desc: 'Blink 8m in the direction you face. Once per round.' },
-  { id: 'finite', name: 'Finite Incantatem', price: 250, action: 'finite', max: 2, icon: 'ward', desc: 'Dispel your afflictions: fire, bleeding, slows, blinds.' },
-  { id: 'vest', name: 'Dragonhide Vest', price: 650, action: null, max: 1, icon: 'vest', desc: 'Armor: takes 30% of every spell hit until it absorbs 60 damage. Survive and you keep it.' },
-  { id: 'felix', name: 'Felix Felicis', price: 800, action: null, max: 1, icon: 'luck', desc: 'Liquid luck: the next killing blow leaves you at 1 HP instead. One sip, one miracle.' },
-  { id: 'portkey', name: 'Emergency Portkey', price: 450, action: 'portkey', max: 1, icon: 'portkey', desc: 'Channel 1.4s (interrupted by damage), then snap back to your spawn. One use.' },
+  { id: 'potion', name: 'Healing Potion', price: 300, action: 'potion', max: 1, icon: 'potion', desc: 'Restores 55 HP over 2.75s. Strong sustain, weak to burst.' },
+  { id: 'broom', name: 'Broomstick', price: 450, action: 'broom', max: 2, icon: 'broom', desc: 'Hold to FLY for up to 2.4s: steer where you look, Space climbs, Ctrl dives. Two mounts.' },
+  { id: 'cloak', name: 'Invisibility Cloak', price: 500, action: 'cloak', max: 1, icon: 'cloak', desc: 'Vanish for 5.2s. Casting breaks it.' },
+  { id: 'apparate', name: 'Apparition Charm', price: 450, action: 'apparate', max: 1, icon: 'blink', desc: 'Blink 7.5m in the direction you face. Once per round.' },
+  { id: 'finite', name: 'Finite Incantatem', price: 200, action: 'finite', max: 2, icon: 'ward', desc: 'Dispel your afflictions: fire, bleeding, slows, blinds.' },
+  { id: 'vest', name: 'Dragonhide Vest', price: 700, action: null, max: 1, icon: 'vest', desc: 'Armor: takes 25% of every spell hit until it absorbs 55 damage. Survive and you keep it.' },
+  { id: 'felix', name: 'Felix Felicis', price: 1000, action: null, max: 1, icon: 'luck', desc: 'Liquid luck: the next killing blow leaves you at 1 HP instead. One sip, one miracle.' },
+  { id: 'portkey', name: 'Emergency Portkey', price: 350, action: 'portkey', max: 1, icon: 'portkey', desc: 'Channel 1.2s (interrupted by damage), then snap back to your spawn. One use.' },
 ];
 
 export const equipById = (id) => EQUIPMENT.find((e) => e.id === id);

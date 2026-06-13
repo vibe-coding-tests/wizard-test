@@ -1,9 +1,9 @@
 // Player: stats, loadout, movement, equipment, first-person wand rig,
 // third-person wizard rig. Bots drive the same controller via p.ctrl.
 import * as THREE from 'three';
-import { SPELLS, SLOT3, SLOT5, TEAM_INFO, wandById, charById, disciplineById } from './data.js';
+import { SPELLS, SLOT3, SLOT5, TEAM_INFO, EQUIP_EFFECTS, wandById, charById, disciplineById } from './data.js';
 import { moveBody, EYE_STAND, EYE_CROUCH, STAND_H } from './world.js';
-import { clamp, lerp, damp, uid } from './utils.js';
+import { clamp, lerp, damp, uid, makeWand } from './utils.js';
 
 export class Player {
   constructor(game, { name, charId, team, isHuman = false, prefWand = 'holly', discipline = null }) {
@@ -65,6 +65,7 @@ export class Player {
     this.bloom = 0;       // recoil spread, grows per cast and decays
     this.punchPitch = 0;  // camera view-punch (visual recoil, decays)
     this.punchYaw = 0;
+    this.spawnProtT = 0;  // deathmatch spawn protection; cancelled by casting
     this.walking = false; // silent walk (Shift)
     this.flying = false;  // broom-mounted
     this.portkeyT = 0;    // emergency portkey channel
@@ -92,7 +93,7 @@ export class Player {
     this.vestHP = 0;
   }
 
-  priceMult() { return this.charId === 'draco' ? 0.8 : 1; }
+  priceMult() { return this.charId === 'draco' ? 0.85 : 1; }
   equipPriceMult() { return this.priceMult() * (this.disc?.equipDiscount ?? 1); }
 
   ownsUsable(id) {
@@ -110,10 +111,10 @@ export class Player {
     return cap;
   }
 
-  // damage-side power — Neville hits 25% harder when cornered
+  // damage-side power — Neville hits harder when cornered
   effPower() {
     let pw = this.stats.power;
-    if (this.charId === 'neville' && this.alive && this.health <= this.stats.hp * 0.35) pw *= 1.25;
+    if (this.charId === 'neville' && this.alive && this.health <= this.stats.hp * 0.35) pw *= 1.2;
     return pw;
   }
 
@@ -190,7 +191,7 @@ export class Player {
 
   speedMult() {
     let m = this.disc?.speedMult ?? 1;
-    if (this.feralT > 0) m *= 1.15; // Greyback fresh off a kill
+    if (this.feralT > 0) m *= 1.12; // Greyback fresh off a kill
     if (this.crouching) m *= 0.48;
     else if (this.walking) m *= 0.5; // silent walk
     if (this.shielding) m *= SPELLS.protego.speedMult;
@@ -198,7 +199,7 @@ export class Player {
     if (this.slowT > 0) m *= 0.7; // Crucio: 30% slower
     if (this.snareT > 0) m *= 0.55; // Impedimenta: heavy snare
     if (this.recharging > 0) m *= 0.85;
-    if (this.flying) m *= 1.6; // broom
+    if (this.flying) m *= EQUIP_EFFECTS.broom.speedMult; // broom
     if (this.body.inWater) m *= 0.62;
     return m;
   }
@@ -263,7 +264,7 @@ export class Player {
     if (!this.alive) return;
     if (action === 'potion' && this.equip.potion > 0 && this.health < this.stats.hp) {
       this.equip.potion--;
-      this.healT = 2.5;
+      this.healT = EQUIP_EFFECTS.potion.duration;
       g.effects.healFX(this);
     } else if (action === 'broom') {
       if (this.flying) {
@@ -271,18 +272,18 @@ export class Player {
       } else if (this.equip.broom > 0) {
         this.equip.broom--;
         this.flying = true;
-        this.broomT = 2.2; // flight fuel
+        this.broomT = EQUIP_EFFECTS.broom.duration; // flight fuel
         g.audio.play('broom', { pos: this.pos });
         if (this.isHuman) g.hud.notice('Broom mounted — Space climbs, Ctrl dives', '');
       } else return;
     } else if (action === 'portkey' && this.equip.portkey > 0 && this.portkeyT <= 0) {
-      this.portkeyT = 1.4;
+      this.portkeyT = EQUIP_EFFECTS.portkey.channel;
       g.effects.portkeyFX(this);
-      g.audio.play('charge', { pos: this.pos, dur: 1.4, vol: 0.5 });
+      g.audio.play('charge', { pos: this.pos, dur: EQUIP_EFFECTS.portkey.channel, vol: 0.5 });
       if (this.isHuman) g.hud.notice('Portkey activated — hold on…', '');
     } else if (action === 'cloak' && this.equip.cloak > 0 && this.cloakT <= 0) {
       this.equip.cloak--;
-      this.cloakT = 6;
+      this.cloakT = EQUIP_EFFECTS.cloak.duration;
       g.effects.cloakFX(this);
     } else if (action === 'apparate' && this.equip.apparate > 0) {
       const dir = this.lookDir();
@@ -290,8 +291,9 @@ export class Player {
       if (dir.lengthSq() < 0.01) return;
       dir.normalize();
       const eye = this.eyePos();
-      const hit = g.world.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 8);
-      const dist = hit ? Math.max(0.5, hit.t - 0.7) : 8;
+      const blinkDist = EQUIP_EFFECTS.apparate.distance;
+      const hit = g.world.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, blinkDist);
+      const dist = hit ? Math.max(0.5, hit.t - 0.7) : blinkDist;
       const tx = this.pos.x + dir.x * dist, tz = this.pos.z + dir.z * dist;
       const gy = g.world.groundY(tx, tz, eye.y + 0.3);
       if (g.world.overlaps(tx - 0.36, gy + 0.05, tz - 0.36, tx + 0.36, gy + 1.85, tz + 0.36)) return;
@@ -453,10 +455,11 @@ export class Player {
     const punchDecay = Math.exp(-dt * 7); // view punch springs back
     this.punchPitch *= punchDecay;
     this.punchYaw *= punchDecay;
+    this.spawnProtT = Math.max(0, this.spawnProtT - dt);
     if (this.cloakT > 0) this.cloakT -= dt;
     if (this.healT > 0) {
       this.healT -= dt;
-      this.health = Math.min(this.stats.hp, this.health + 20 * dt);
+      this.health = Math.min(this.stats.hp, this.health + EQUIP_EFFECTS.potion.healPerSecond * dt);
     }
     if (this.recharging > 0) {
       this.recharging -= dt;
@@ -556,8 +559,9 @@ export class Player {
     if (this.wandProp) this.game.effects.removeWandDrop(this.wandProp, false);
     this.healT = 0; this.broomT = 0; this.cloakT = 0;
     this.bloom = 0; this.punchPitch = 0; this.punchYaw = 0;
+    this.spawnProtT = 0;
     this.flying = false; this.portkeyT = 0; this.walking = false;
-    if (this.equip.vest > 0 && this.vestHP <= 0) this.vestHP = 60; // fresh vest charges on spawn
+    if (this.equip.vest > 0 && this.vestHP <= 0) this.vestHP = EQUIP_EFFECTS.vest.pool; // fresh vest charges on spawn
     this.hasRelic = false;
     this.deathInfo = null;
     this.hitLog.clear();
@@ -662,73 +666,136 @@ export class Rig {
     body.scale.set(bw, bh, bw);
     g.add(body);
 
-    // robe
-    const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 1.15, 8), mat(robeC));
-    robe.position.y = 0.62;
+    // robe — lathe-turned: flared hem, cinched waist, broad shoulders rolling
+    // off into a real neck. ROBE_PTS is [radius, y] bottom→top.
+    const ROBE_PTS = [
+      [0.44, 0.02], [0.43, 0.06], [0.38, 0.22], [0.33, 0.42], [0.295, 0.62],
+      [0.275, 0.80], [0.265, 0.95], [0.27, 1.10], [0.275, 1.25], [0.265, 1.38],
+      [0.235, 1.47], [0.18, 1.525], [0.10, 1.555], [0, 1.565],
+    ];
+    // robe surface radius at height y — decorations sit just proud of this
+    const robeR = (y) => {
+      for (let i = 1; i < ROBE_PTS.length; i++) {
+        if (y <= ROBE_PTS[i][1]) {
+          const [r0, y0] = ROBE_PTS[i - 1], [r1, y1] = ROBE_PTS[i];
+          return lerp(r0, r1, (y - y0) / (y1 - y0));
+        }
+      }
+      return 0;
+    };
+    const frontZ = (y, pad = 0.012) => -(robeR(y) + pad);
+    const robe = new THREE.Mesh(
+      new THREE.LatheGeometry(ROBE_PTS.map(([x, y]) => new THREE.Vector2(x, y)), 16),
+      mat(robeC)
+    );
     body.add(robe);
+    // hem shadow band — grounds the silhouette
+    const hem = new THREE.Mesh(new THREE.CylinderGeometry(0.435, 0.445, 0.05, 16, 1, true), mat(new THREE.Color(robeC).multiplyScalar(0.55)));
+    hem.position.y = 0.045;
+    body.add(hem);
     const accent = skin.accent ?? team.trim; // house/personal trim color
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.3, 0.09, 8), mat(accent));
-    belt.position.y = 0.95;
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.295, 0.085, 16), mat(accent));
+    belt.position.y = 0.97;
     body.add(belt);
-    const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.27, 0.5, 8), mat(robeC));
-    chest.position.y = 1.3;
-    body.add(chest);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.055, 0.02), mat(0xc8a44a));
+    buckle.position.set(0, 0.97, -0.297);
+    body.add(buckle);
+    // front placket: a darker strip down the robe front
+    const placket = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.42, 0.016), mat(new THREE.Color(robeC).multiplyScalar(0.7)));
+    placket.position.set(0, 1.17, frontZ(1.17));
+    placket.rotation.x = 0.04;
+    body.add(placket);
     // team sigil on the chest
     const sigil = new THREE.Mesh(
       new THREE.PlaneGeometry(0.2, 0.2),
       new THREE.MeshBasicMaterial({ map: sigilTexture(player.team), transparent: true, depthWrite: false })
     );
-    sigil.position.set(0, 1.32, -0.265);
+    sigil.position.set(0, 1.32, frontZ(1.32, 0.014));
     sigil.rotation.y = Math.PI;
     body.add(sigil);
     this.sigil = sigil;
-    // shoulder pads
+    // rounded epaulettes bridging the shoulder roll and the arm
     for (const side of [-1, 1]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.09, 0.16), mat(accent));
-      pad.position.set(side * 0.29, 1.56, 0);
-      pad.rotation.z = side * -0.2;
+      const pad = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 9, 0, Math.PI * 2, 0, Math.PI * 0.62), mat(accent));
+      pad.position.set(side * 0.275, 1.49, 0);
+      pad.rotation.z = side * -0.35;
+      pad.scale.set(1.05, 0.85, 1.15);
       body.add(pad);
     }
 
-    // head
+    // head — higher-poly sphere, slightly oval, on a real neck
     const headC = skin.pale ? PALE : SKIN;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mat(headC));
+    const skinM = mat(headC);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.075, 0.1, 10), skinM);
+    neck.position.y = 1.555;
+    body.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 14), skinM);
     head.position.y = 1.62;
+    head.scale.set(0.94, 1.04, 0.97);
     body.add(head);
-    // eyes — Voldemort gets red slits
+    // ears
+    if (!skin.mane) {
+      for (const side of [-1, 1]) {
+        const ear = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), skinM);
+        ear.position.set(side * 0.158, 1.625, -0.01);
+        ear.scale.set(0.55, 1, 0.8);
+        body.add(ear);
+      }
+    }
+    // nose — Voldemort's stays flat (he has slits instead)
+    if (!skin.noseSlits) {
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), skinM);
+      nose.position.set(0, 1.615, -0.165);
+      nose.scale.set(0.8, 1.1, 1.05);
+      body.add(nose);
+    }
+    // eyes — whites + iris; Voldemort gets red slits
     const eyeC = skin.slits ? 0xd02020 : 0x14100c;
     for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), mat(eyeC));
-      eye.position.set(side * 0.058, 1.645, -0.15);
+      if (!skin.slits) {
+        const white = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), mat(0xf2efe8));
+        white.position.set(side * 0.058, 1.647, -0.148);
+        white.scale.set(1, 0.85, 0.55);
+        body.add(white);
+      }
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0155, 8, 6), mat(eyeC));
+      eye.position.set(side * 0.058, 1.645, -0.162);
       if (skin.slits) eye.scale.set(0.6, 1.5, 0.5);
       body.add(eye);
+      // brow line
+      if (!skin.slits) {
+        const brow = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.012, 0.014), mat(skin.hair ?? 0x4a3826));
+        brow.position.set(side * 0.058, 1.685, -0.152);
+        brow.rotation.z = side * -0.12;
+        body.add(brow);
+      }
     }
     // hair variants give each champion a silhouette
     if (skin.hair !== null && skin.hair !== undefined) {
       const hairM = mat(skin.hair);
       if (skin.bushy) {
-        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), hairM);
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), hairM);
         hair.position.set(0, 1.68, 0.04);
         hair.scale.set(1.25, 1.05, 1.25);
         body.add(hair);
       } else if (skin.wild) {
         for (let i = 0; i < 4; i++) {
-          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 6), hairM);
+          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), hairM);
           tuft.position.set(Math.sin(i * 2.2) * 0.12, 1.7 + (i % 2) * 0.06, 0.05 + Math.cos(i * 1.7) * 0.1);
           body.add(tuft);
         }
-        const crown = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
+        const crown = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), hairM);
         crown.position.y = 1.66;
         body.add(crown);
       } else if (skin.long) {
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
         cap.position.y = 1.65;
         body.add(cap);
         const fall = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.5, 0.08), hairM);
         fall.position.set(0, 1.42, 0.16);
         body.add(fall);
       } else if (skin.curtains) {
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
         cap.position.y = 1.63;
         body.add(cap);
         for (const side of [-1, 1]) {
@@ -737,28 +804,28 @@ export class Rig {
           body.add(curtain);
         }
       } else if (skin.slick) {
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.178, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.178, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hairM);
         cap.position.y = 1.64;
         cap.scale.set(1, 0.7, 1);
         body.add(cap);
       } else if (skin.bun) { // severe bun pulled tight at the crown
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.176, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.176, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
         cap.position.y = 1.64;
         body.add(cap);
-        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), hairM);
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), hairM);
         bun.position.set(0, 1.76, 0.12);
         body.add(bun);
       } else if (skin.pony) { // quidditch ponytail, swinging high
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.176, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.176, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
         cap.position.y = 1.65;
         body.add(cap);
-        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.018, 0.34, 6), hairM);
+        const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.018, 0.34, 10), hairM);
         tail.position.set(0, 1.6, 0.2);
         tail.rotation.x = 0.55;
         body.add(tail);
       } else if (skin.mane) { // shaggy werewolf mane swallowing the head
         for (let i = 0; i < 6; i++) {
-          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.11, 7, 6), hairM);
+          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), hairM);
           const a = (i / 6) * Math.PI * 2;
           tuft.position.set(Math.sin(a) * 0.13, 1.64 + ((i % 3) - 1) * 0.05, Math.cos(a) * 0.13 + 0.03);
           body.add(tuft);
@@ -769,34 +836,44 @@ export class Rig {
           body.add(burn);
         }
       } else if (skin.curls) { // a helmet of tight, smug curls
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.185, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.185, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
         cap.position.y = 1.63;
         cap.scale.set(1.1, 0.95, 1.1);
         body.add(cap);
         for (const [cx, cy, cz] of [[-0.09, 1.71, -0.1], [0.09, 1.71, -0.1], [0, 1.74, -0.12]]) {
-          const curl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), hairM);
+          const curl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), hairM);
           curl.position.set(cx, cy, cz);
           body.add(curl);
         }
       } else if (skin.balding) { // a thin ring of hair clinging on
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.165, 0.07, 10, 1, true), hairM);
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.165, 0.07, 16, 1, true), hairM);
         ring.position.y = 1.62;
         body.add(ring);
       } else {
-        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairM);
         hair.position.y = 1.65;
         body.add(hair);
       }
     }
-    if (skin.glasses) {
-      const gl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.04), mat(0x111111));
-      gl.position.set(0, 1.63, -0.15);
-      body.add(gl);
+    if (skin.glasses) { // round wire rims
+      const rimM = mat(0x16181c);
+      for (const side of [-1, 1]) {
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.008, 8, 18), rimM);
+        rim.position.set(side * 0.058, 1.642, -0.152);
+        body.add(rim);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.01, 0.12), rimM);
+        arm.position.set(side * 0.125, 1.648, -0.085);
+        arm.rotation.y = side * 0.45;
+        body.add(arm);
+      }
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.011, 0.012), rimM);
+      bridge.position.set(0, 1.648, -0.158);
+      body.add(bridge);
     }
     // ---- champion signatures: the silhouette tells you who you're fighting ----
     if (skin.messy) { // unruly tufts poking out of the hairline
       for (const [tx, ty, tz] of [[-0.1, 1.74, 0.06], [0.09, 1.76, -0.02], [0.02, 1.77, 0.1]]) {
-        const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mat(skin.hair));
+        const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(skin.hair));
         tuft.position.set(tx, ty, tz);
         body.add(tuft);
       }
@@ -807,16 +884,21 @@ export class Rig {
       scar.rotation.set(-0.35, 0, 0.5);
       body.add(scar);
     }
-    if (skin.scarf) { // striped house scarf with a hanging tail
+    if (skin.scarf) { // striped scarf wound round the neck, tail down the front
       skin.scarf.forEach((c, i) => {
-        const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.185, 0.05, 8), mat(c));
-        wrap.position.y = 1.5 - i * 0.05;
+        const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.105 + i * 0.02, 0.125 + i * 0.02, 0.055, 14), mat(c));
+        wrap.position.y = 1.585 - i * 0.05;
         body.add(wrap);
       });
       const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.3, 0.025), mat(skin.scarf[0]));
-      tail.position.set(0.1, 1.32, -0.23);
+      tail.position.set(0.1, 1.38, frontZ(1.42));
       tail.rotation.z = -0.08;
+      tail.rotation.x = -0.1;
       body.add(tail);
+      const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.04, 0.02), mat(skin.scarf[1] ?? skin.scarf[0]));
+      fringe.position.set(0.125, 1.215, frontZ(1.26));
+      fringe.rotation.z = -0.08;
+      body.add(fringe);
     }
     if (skin.satchel) { // book bag on the hip, strap across the chest
       const bag = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.19, 0.08), mat(0x5a3c22));
@@ -824,14 +906,25 @@ export class Rig {
       bag.rotation.y = 0.15;
       body.add(bag);
       const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.014), mat(0x4a3019));
-      strap.position.set(-0.07, 1.33, -0.245);
+      strap.position.set(-0.07, 1.33, -0.282);
       strap.rotation.z = 0.5;
       body.add(strap);
     }
-    if (skin.timeTurner) { // tiny golden hourglass pendant
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.009, 6, 12), mat(0xd6b25a));
-      ring.position.set(0, 1.42, -0.25);
+    if (skin.timeTurner) { // tiny golden hourglass pendant on a chain
+      const goldM = mat(0xd6b25a);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.009, 8, 18), goldM);
+      ring.position.set(0, 1.42, frontZ(1.42, 0.018));
       body.add(ring);
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.034, 8), goldM);
+      glass.position.set(0, 1.42, frontZ(1.42, 0.018));
+      body.add(glass);
+      for (const side of [-1, 1]) { // chain up to the neck
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.16, 6), goldM);
+        chain.position.set(side * 0.045, 1.5, frontZ(1.5, 0.012));
+        chain.rotation.z = side * 0.45;
+        chain.rotation.x = -0.22;
+        body.add(chain);
+      }
     }
     if (skin.patch) { // hand-me-down robes, lovingly mended
       const patch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.014), mat(0x7a5b33));
@@ -842,7 +935,7 @@ export class Rig {
     if (skin.spectrespecs) { // pink-and-blue swirl goggles
       const colors = [0xd886c8, 0x7ab8d8];
       [-1, 1].forEach((side, i) => {
-        const lens = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.013, 6, 12), mat(colors[i]));
+        const lens = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.013, 8, 18), mat(colors[i]));
         lens.position.set(side * 0.058, 1.64, -0.155);
         body.add(lens);
       });
@@ -855,37 +948,38 @@ export class Rig {
         const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.045, 4), mat(0x9aa86a));
         stem.position.set(side * 0.165, 1.585, -0.02);
         body.add(stem);
-        const plum = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), mat(0xd86038));
+        const plum = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), mat(0xd86038));
         plum.position.set(side * 0.165, 1.553, -0.02);
         body.add(plum);
       }
     }
-    if (skin.collar) { // severe high collar buttoned to the chin
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.13, 0.1, 8), mat(skin.accent ?? 0x14181c));
-      col.position.y = 1.51;
+    if (skin.collar) { // severe high collar hugging the neck to the chin
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.128, 0.13, 14), mat(skin.accent ?? 0x14181c));
+      col.position.y = 1.56;
       body.add(col);
     }
     if (skin.buttons) { // a column of tiny buttons down the front
       for (let i = 0; i < 4; i++) {
-        const btn = new THREE.Mesh(new THREE.SphereGeometry(0.013, 5, 4), mat(0x202024));
-        btn.position.set(0, 1.44 - i * 0.1, -0.247 - i * 0.004);
+        const by = 1.44 - i * 0.1;
+        const btn = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), mat(0x202024));
+        btn.position.set(0, by, frontZ(by, 0.008));
         body.add(btn);
       }
     }
     if (skin.corset) { // black bodice with crossed lacing
-      const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.252, 0.283, 0.32, 8), mat(0x17101e));
+      const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.262, 0.292, 0.32, 16), mat(0x17101e));
       bodice.position.y = 1.22;
       body.add(bodice);
       for (const dir of [-1, 1]) {
         const lace = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.3, 0.012), mat(0x6a5a7a));
-        lace.position.set(0, 1.22, -0.26);
+        lace.position.set(0, 1.22, -0.295);
         lace.rotation.z = dir * 0.65;
         body.add(lace);
       }
     }
     if (skin.locket) { // a stolen silver locket
-      const lk = new THREE.Mesh(new THREE.SphereGeometry(0.024, 6, 5), mat(0xb8bcc8));
-      lk.position.set(0, 1.4, -0.252);
+      const lk = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), mat(0xb8bcc8));
+      lk.position.set(0, 1.4, frontZ(1.4, 0.012));
       lk.scale.set(1, 1.25, 0.6);
       body.add(lk);
     }
@@ -898,41 +992,53 @@ export class Rig {
       }
     }
     if (skin.clasp) { // serpent brooch pinning the robe
-      const cl = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.009, 6, 10), mat(0x3f8a4f));
-      cl.position.set(0, 1.49, -0.21);
+      const cl = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.009, 8, 16), mat(0x3f8a4f));
+      cl.position.set(0, 1.49, frontZ(1.49, 0.014));
       body.add(cl);
     }
     if (skin.badge) { // prefect badge, polished daily
       const bd = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.012), mat(skin.accent ?? 0x1f4d33));
-      bd.position.set(-0.1, 1.42, -0.252);
+      bd.position.set(-0.1, 1.42, frontZ(1.42, 0.01));
       bd.rotation.x = 0.12;
       body.add(bd);
       const pin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.045, 0.013), mat(0xc0c4cc));
-      pin.position.set(-0.1, 1.42, -0.258);
+      pin.position.set(-0.1, 1.42, frontZ(1.42, 0.016));
       body.add(pin);
     }
     if (skin.beard) { // the great silver beard, down past the belt
-      const beard = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.55, 7), mat(skin.hair ?? 0xdfd9cf));
-      beard.position.set(0, 1.28, -0.13);
-      beard.rotation.x = Math.PI; // point down
+      const beardM = mat(skin.hair ?? 0xdfd9cf);
+      // lathe profile: pointed at the bottom, full at the jaw — no open cone rim
+      const beardPts = [
+        [0, 0], [0.018, 0.04], [0.045, 0.12], [0.07, 0.24],
+        [0.088, 0.36], [0.082, 0.46], [0.05, 0.53], [0, 0.56],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      const beard = new THREE.Mesh(new THREE.LatheGeometry(beardPts, 12), beardM);
+      beard.position.set(0, 0.94, -0.15); // pointed tip at the belt…
+      beard.scale.set(1.3, 1, 0.7); // …full jaw-width up top, tucked under the chin
       beard.rotation.z = 0.02;
       body.add(beard);
-      const mo = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.04), mat(skin.hair ?? 0xdfd9cf));
-      mo.position.set(0, 1.575, -0.15);
-      body.add(mo);
+      // moustache: two swept halves under the nose, joining beard to face
+      for (const side of [-1, 1]) {
+        const mo = new THREE.Mesh(new THREE.CapsuleGeometry(0.019, 0.055, 3, 8), beardM);
+        mo.position.set(side * 0.042, 1.572, -0.148);
+        mo.rotation.z = Math.PI / 2 + side * 0.3;
+        body.add(mo);
+      }
     }
     if (skin.halfMoon) { // half-moon spectacles on a crooked nose
       for (const side of [-1, 1]) {
-        const lens = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.007, 5, 10, Math.PI), mat(0xd6b25a));
+        const lens = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.007, 8, 16, Math.PI), mat(0xd6b25a));
         lens.position.set(side * 0.058, 1.635, -0.152);
         lens.rotation.z = Math.PI; // half-moon hangs low
         body.add(lens);
       }
     }
     if (skin.startrim) { // moons and stars stitched into the robe
-      for (const [sx, sy, sz] of [[-0.12, 0.7, -0.31], [0.14, 0.52, -0.3], [0.04, 0.92, -0.28], [-0.16, 1.18, -0.24]]) {
-        const star = new THREE.Mesh(new THREE.SphereGeometry(0.016, 5, 4), mat(0xd6b25a));
-        star.position.set(sx, sy, sz);
+      for (const [sx, sy] of [[-0.12, 0.7], [0.14, 0.52], [0.04, 0.92], [-0.16, 1.18]]) {
+        const star = new THREE.Mesh(new THREE.SphereGeometry(0.016, 7, 5), mat(0xd6b25a));
+        // pull in by the lateral offset so the stud sits on the curved surface
+        const r = robeR(sy) + 0.01;
+        star.position.set(sx, sy, -Math.sqrt(Math.max(0.001, r * r - sx * sx)));
         body.add(star);
       }
     }
@@ -948,12 +1054,12 @@ export class Rig {
     }
     if (skin.tartan) { // tartan sash over one shoulder
       const sash = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.02), mat(0x1d5a3a));
-      sash.position.set(0.06, 1.3, -0.245);
+      sash.position.set(0.06, 1.3, -0.282);
       sash.rotation.z = 0.55;
       body.add(sash);
       for (let i = 0; i < 3; i++) {
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.092, 0.03, 0.022), mat(0xb03434));
-        stripe.position.set(0.2 - i * 0.14, 1.12 + i * 0.18, -0.246);
+        stripe.position.set(0.2 - i * 0.14, 1.12 + i * 0.18, -0.283);
         stripe.rotation.z = 0.55;
         body.add(stripe);
       }
@@ -970,21 +1076,21 @@ export class Rig {
       body.add(strap);
     }
     if (skin.sprig) { // a potted Mimbulus mimbletonia poking from the robe
-      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.024, 0.05, 6), mat(0x8a5a33));
-      pot.position.set(0.14, 1.06, -0.28);
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.024, 0.05, 10), mat(0x8a5a33));
+      pot.position.set(0.14, 1.06, -0.295);
       body.add(pot);
       for (const [ox, oy] of [[0, 0.05], [-0.025, 0.035], [0.025, 0.04]]) {
-        const bud = new THREE.Mesh(new THREE.SphereGeometry(0.018, 5, 4), mat(0x4a7a3a));
-        bud.position.set(0.14 + ox, 1.09 + oy, -0.28);
+        const bud = new THREE.Mesh(new THREE.SphereGeometry(0.018, 7, 5), mat(0x4a7a3a));
+        bud.position.set(0.14 + ox, 1.09 + oy, -0.295);
         body.add(bud);
       }
     }
     if (skin.cane) { // the serpent-headed walking cane (wand sheath inside)
       const cane = new THREE.Group();
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.85, 6), mat(0x14110c));
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.85, 10), mat(0x14110c));
       shaft.position.y = -0.42;
       cane.add(shaft);
-      const headK = new THREE.Mesh(new THREE.SphereGeometry(0.035, 7, 6), mat(0xcfd6da));
+      const headK = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), mat(0xcfd6da));
       headK.position.y = -0.02;
       headK.scale.set(1, 1.3, 1);
       cane.add(headK);
@@ -993,13 +1099,13 @@ export class Rig {
       body.add(cane);
     }
     if (skin.furTrim) { // fur-collared traveling cloak
-      const fur = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.13, 9), mat(0xb9b4a8));
-      fur.position.y = 1.5;
+      const fur = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.185, 0.12, 14), mat(0xb9b4a8));
+      fur.position.y = 1.545;
       body.add(fur);
     }
     if (skin.fur) { // matted pelt across the shoulders
       for (const side of [-1, 1]) {
-        const pelt = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 6), mat(0x5a4a36));
+        const pelt = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat(0x5a4a36));
         pelt.position.set(side * 0.26, 1.55, 0.02);
         pelt.scale.set(1.2, 0.7, 1.2);
         body.add(pelt);
@@ -1014,7 +1120,7 @@ export class Rig {
       }
     }
     if (skin.bow) { // the little black velvet bow
-      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), mat(0x1c1418));
+      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), mat(0x1c1418));
       knot.position.set(0, 1.79, 0.02);
       body.add(knot);
       for (const side of [-1, 1]) {
@@ -1025,13 +1131,13 @@ export class Rig {
       }
     }
     if (skin.brooch) { // jeweled brooch at the cardigan collar
-      const br = new THREE.Mesh(new THREE.SphereGeometry(0.026, 6, 5), mat(0xe8c8e0));
-      br.position.set(0, 1.45, -0.25);
+      const br = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), mat(0xe8c8e0));
+      br.position.set(0, 1.45, frontZ(1.45, 0.012));
       br.scale.set(1, 1, 0.5);
       body.add(br);
     }
     if (skin.silverHand) { // Voldemort's gift — a hand of silver
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 7, 6), mat(0xc8ccd6));
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), mat(0xc8ccd6));
       hand.position.set(0, -0.46, 0);
       hand.userData.silver = true;
       // attach after arms are built (see below)
@@ -1039,27 +1145,49 @@ export class Rig {
     }
     if (skin.hunched) body.rotation.x = 0.09; // the rat's cower
     // hat (Order) / hood (Death Eaters) — some silhouettes replace them
-    if (skin.witchHat) { // McGonagall's tall emerald hat, slightly bent
-      const hat = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.52, 8), mat(0x123c28));
-      hat.position.set(0.02, 1.97, 0);
+    if (skin.witchHat) { // McGonagall's tall emerald hat, crooked tip
+      const hatM = mat(0x123c28);
+      const hatPts = [
+        [0.215, 0], [0.2, 0.04], [0.165, 0.13], [0.125, 0.24], [0.09, 0.34],
+        [0.055, 0.43], [0.028, 0.5], [0.01, 0.54], [0, 0.56],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      const hat = new THREE.Mesh(new THREE.LatheGeometry(hatPts, 14), hatM);
+      hat.position.set(0.02, 1.73, 0);
       hat.rotation.z = 0.2;
       body.add(hat);
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.04, 10), mat(0x123c28));
-      brim.position.y = 1.76;
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), hatM);
+      tip.position.set(-0.075, 2.27, 0);
+      body.add(tip);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.275, 0.295, 0.035, 18), hatM);
+      brim.position.y = 1.755;
       body.add(brim);
+      const bandH = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.213, 0.05, 14), mat(0x0c2a1c));
+      bandH.position.set(0.012, 1.79, 0);
+      bandH.rotation.z = 0.2;
+      body.add(bandH);
     } else if (player.team === 'order') {
       if (!skin.pony && !skin.mane) { // bare heads for the athletes and beasts
-        const hat = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 8), mat(robeC));
-        hat.position.y = 1.92;
+        const hatPts = [
+          [0.225, 0], [0.21, 0.035], [0.17, 0.11], [0.13, 0.2], [0.09, 0.29],
+          [0.05, 0.36], [0.02, 0.41], [0, 0.43],
+        ].map(([x, y]) => new THREE.Vector2(x, y));
+        const hat = new THREE.Mesh(new THREE.LatheGeometry(hatPts, 14), mat(robeC));
+        hat.position.y = 1.73;
         hat.rotation.z = 0.12;
         body.add(hat);
-        const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.29, 0.04, 10), mat(team.trim));
+        const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.035, 18), mat(team.trim));
         brim.position.y = 1.75;
         body.add(brim);
       }
     } else if (!skin.pale && !skin.mane && !skin.curls && !skin.bow) { // no hood over Voldemort's skull, the mane, or the bow
-      const hood = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.34, 8), mat(robeC));
-      hood.position.y = 1.82;
+      // draped hood: wide at the shoulders, gathered to a soft point behind the head
+      const hoodPts = [
+        [0.235, 0], [0.225, 0.06], [0.19, 0.14], [0.15, 0.22], [0.11, 0.29],
+        [0.065, 0.34], [0.025, 0.37], [0, 0.38],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      const hood = new THREE.Mesh(new THREE.LatheGeometry(hoodPts, 14), mat(robeC));
+      hood.position.y = 1.65;
+      hood.rotation.x = -0.12; // tipped back off the brow
       body.add(hood);
     }
 
@@ -1067,16 +1195,29 @@ export class Rig {
     const wandCfg = skin.wand || { len: 0.48, color: 0x2e1d10 };
     this.armR = new THREE.Group();
     this.armR.position.set(0.3, 1.45, 0);
-    const armRMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.46, 0.09), mat(robeC));
+    // sleeve: tapered capsule that flares at the cuff, like a real robe sleeve
+    const armRMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.34, 4, 10), mat(robeC));
     armRMesh.position.y = -0.2;
     this.armR.add(armRMesh);
-    const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.022, wandCfg.len, 6), mat(wandCfg.color));
-    wand.position.set(0, -0.42, -0.18);
-    wand.rotation.x = Math.PI / 2.4;
+    const cuffR = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.092, 0.1, 12, 1, true), mat(new THREE.Color(robeC).multiplyScalar(0.78)));
+    cuffR.position.y = -0.38;
+    this.armR.add(cuffR);
+    // casting hand wrapped around the wand grip
+    const handC = skin.silverHand ? 0xc8ccd6 : (skin.pale ? PALE : SKIN);
+    if (!this.silverHandMesh) {
+      const handR = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 8), mat(handC));
+      handR.scale.set(0.92, 1.05, 1.1);
+      handR.position.set(0, -0.45, -0.02);
+      this.armR.add(handR);
+    }
+    // flipped so the lathe's pointed end aims down the cast line
+    const wand = makeWand(wandCfg, mat(wandCfg.color), wandCfg.grip ? mat(wandCfg.grip) : null, { radialSegs: 10 });
+    wand.position.set(0, -0.46, -0.16);
+    wand.rotation.x = Math.PI + Math.PI / 2.4;
     this.armR.add(wand);
     this.wand = wand;
     if (skin.ring) { // the Malfoy signet
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.009, 6, 10), mat(0xc8ccd4));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.009, 8, 16), mat(0xc8ccd4));
       ring.position.set(0, -0.4, 0);
       ring.rotation.x = Math.PI / 2;
       this.armR.add(ring);
@@ -1096,40 +1237,51 @@ export class Rig {
       blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     this.chargeGlow.scale.setScalar(0.001);
-    this.chargeGlow.position.set(0, -0.6, -0.38);
+    this.chargeGlow.position.set(0, -0.53, -0.4); // on the lathe wand's tip
     this.armR.add(this.chargeGlow);
     body.add(this.armR);
 
     this.armL = new THREE.Group();
     this.armL.position.set(-0.3, 1.45, 0);
-    const armLMesh = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.46, 0.09), mat(robeC));
+    const armLMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.34, 4, 10), mat(robeC));
     armLMesh.position.y = -0.2;
     this.armL.add(armLMesh);
+    const cuffL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.092, 0.1, 12, 1, true), mat(new THREE.Color(robeC).multiplyScalar(0.78)));
+    cuffL.position.y = -0.38;
+    this.armL.add(cuffL);
+    const handL = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), mat(skin.pale ? PALE : SKIN));
+    handL.scale.set(0.92, 1.1, 1);
+    handL.position.y = -0.45;
+    this.armL.add(handL);
     body.add(this.armL);
 
-    // legs
-    this.legR = new THREE.Group();
-    this.legR.position.set(0.12, 0.5, 0);
-    const legRM = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), mat(0x1a1410));
-    legRM.position.y = -0.25;
-    this.legR.add(legRM);
-    body.add(this.legR);
-    this.legL = new THREE.Group();
-    this.legL.position.set(-0.12, 0.5, 0);
-    const legLM = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), mat(0x1a1410));
-    legLM.position.y = -0.25;
-    this.legL.add(legLM);
-    body.add(this.legL);
+    // legs: trouser capsule + boot
+    const mkLeg = (side) => {
+      const grp = new THREE.Group();
+      grp.position.set(side * 0.12, 0.5, 0);
+      const trouser = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.32, 4, 10), mat(0x1a1410));
+      trouser.position.y = -0.21;
+      grp.add(trouser);
+      const boot = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), mat(0x0e0a08));
+      boot.scale.set(0.95, 0.55, 1.6);
+      boot.position.set(0, -0.46, -0.035);
+      grp.add(boot);
+      body.add(grp);
+      return grp;
+    };
+    this.legR = mkLeg(1);
+    this.legL = mkLeg(-1);
 
     // relic carried on back
     this.relicMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), new THREE.MeshBasicMaterial({ color: 0xa040ff }));
+    this.relicMesh.scale.set(0.78, 1.15, 0.78); // matches the planted shard
     this.relicMesh.position.set(0, 1.25, 0.3);
     this.relicMesh.visible = false;
     g.add(this.relicMesh);
 
     // shadow blob
     const blob = new THREE.Mesh(
-      new THREE.CircleGeometry(0.42, 12),
+      new THREE.CircleGeometry(0.42, 24),
       new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false })
     );
     blob.rotation.x = -Math.PI / 2;
@@ -1334,39 +1486,65 @@ export class FPRig {
     const g = new THREE.Group();
     g.position.set(0.34, -0.34, -0.6);
     const wandMat = new THREE.MeshLambertMaterial({ color: wandCfg.color });
+    const gripMat = new THREE.MeshLambertMaterial({ color: wandCfg.grip ?? 0x1c1208 });
     this.wand = new THREE.Group();
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.022, fpLen, 8), wandMat);
-    shaft.rotation.x = -Math.PI / 2 + 0.18;
-    shaft.position.z = -0.2;
-    this.wand.add(shaft);
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.14, 8), new THREE.MeshLambertMaterial({ color: wandCfg.grip ?? 0x1c1208 }));
-    grip.rotation.x = -Math.PI / 2 + 0.18;
-    grip.position.set(0, 0.04, 0.04);
-    this.wand.add(grip);
-    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), new THREE.MeshLambertMaterial({ color: wandCfg.grip ?? 0x2a1a0c }));
-    pommel.position.set(0, 0.025, 0.12);
-    this.wand.add(pommel);
-    this.tip = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4455 }));
-    this.tip.position.set(0, 0.04 + fpLen * 0.155, -0.2 - fpLen * 0.47);
+    // lathe-turned wand: pommel bulb, ridged grip, carved collar, tapered shaft.
+    // First-person is where the wand is scrutinized — full radial detail.
+    const tiltX = -Math.PI / 2 + 0.18;
+    const lathe = makeWand(wandCfg, wandMat, wandCfg.grip ? gripMat : null, { lengthScale: 1.25, radialSegs: 16, thick: 1.2 });
+    lathe.rotation.x = tiltX;
+    lathe.position.set(0, 0.02, -0.2);
+    this.wand.add(lathe);
+    // glowing tip sits exactly on the lathe's point
+    const hl = fpLen / 2;
+    const tipPos = new THREE.Vector3(0, 0.02 + Math.cos(tiltX) * hl, -0.2 + Math.sin(tiltX) * hl);
+    this.tip = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff4455 }));
+    this.tip.position.copy(tipPos);
     this.wand.add(this.tip);
     // charge halo around the tip
     this.tipGlow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTex(), color: 0xffffff, transparent: true, opacity: 0,
       blending: THREE.AdditiveBlending, depthWrite: false,
     }));
-    this.tipGlow.position.copy(this.tip.position);
+    this.tipGlow.position.copy(tipPos);
     this.tipGlow.scale.setScalar(0.001);
     this.wand.add(this.tipGlow);
-    // hand is separate from the wand so it stays visible while disarmed
-    this.hand = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), new THREE.MeshLambertMaterial({ color: skin.pale ? PALE : SKIN }));
-    this.hand.scale.set(1, 0.8, 1.3); // knuckles-forward fist
-    this.hand.position.set(0.005, -0.015, 0.03);
+    // hand is separate from the wand so it stays visible while disarmed:
+    // a real fist — palm, knuckle row curled over the grip, thumb lock
+    const handM = new THREE.MeshLambertMaterial({ color: skin.pale ? PALE : SKIN });
+    this.hand = new THREE.Group();
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 9), handM);
+    palm.scale.set(1.1, 0.92, 1.3);
+    this.hand.add(palm);
+    for (let i = 0; i < 4; i++) { // knuckles wrapped across the top
+      const k = new THREE.Mesh(new THREE.SphereGeometry(0.011, 9, 7), handM);
+      k.position.set(-0.024 + i * 0.016, 0.015, -0.03 - Math.abs(i - 1.5) * 0.004);
+      this.hand.add(k);
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.014, 3, 8), handM);
+      f.position.set(-0.024 + i * 0.016, 0.002, -0.038);
+      f.rotation.x = 1.05; // first finger segment curling down over the grip
+      this.hand.add(f);
+    }
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.022, 3, 8), handM);
+    thumb.position.set(-0.033, 0.008, 0.008);
+    thumb.rotation.set(-0.7, 0.35, -0.85); // locked over the back of the grip
+    this.hand.add(thumb);
+    this.hand.position.set(0.004, -0.012, -0.055);
+    this.hand.rotation.x = 0.18; // knuckles follow the wand's tilt
     g.add(this.hand);
-    // robed forearm behind the fist
-    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.065, 0.3, 8), new THREE.MeshLambertMaterial({ color: robeC }));
+    // robed forearm behind the fist: sleeve + flared cuff + lining
+    const sleeveM = new THREE.MeshLambertMaterial({ color: robeC });
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.075, 0.34, 14), sleeveM);
     sleeve.rotation.x = -Math.PI / 2 + 0.55;
-    sleeve.position.set(0.02, -0.09, 0.18);
+    sleeve.position.set(0.02, -0.1, 0.19);
     g.add(sleeve);
+    const cuff = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.052, 0.068, 0.07, 14, 1, true),
+      new THREE.MeshLambertMaterial({ color: new THREE.Color(robeC).multiplyScalar(0.62) })
+    );
+    cuff.rotation.x = -Math.PI / 2 + 0.55;
+    cuff.position.set(0.012, -0.024, 0.052);
+    g.add(cuff);
     // angle the wand across the view so it reads as a wand, not a dot
     this.wand.rotation.set(0.1, -0.42, 0.08);
     g.add(this.wand);

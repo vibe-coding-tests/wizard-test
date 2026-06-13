@@ -15,20 +15,21 @@ export class SpellSystem {
   // effective stats helpers ------------------------------------------------
   manaCost(p, spell) {
     let m = spell.mana * p.wand.manaMult;
-    if (p.char.id === 'harry' && spell.id === 'expelliarmus') m *= 0.5;
-    if (p.char.id === 'voldemort' && spell.id === 'avada') m *= 0.8;
+    if (spell.slot === 3) m *= p.wand.hexMana ?? 1;
+    if (p.char.id === 'harry' && spell.id === 'expelliarmus') m *= 0.6;
+    if (p.char.id === 'voldemort' && spell.id === 'avada') m *= 0.85;
     return m;
   }
 
   castInterval(p, spell) {
     let iv = spell.interval / (p.stats.cast * p.wand.cast);
-    if (p.char.id === 'harry' && spell.id === 'expelliarmus') iv *= 0.4;
+    if (p.char.id === 'harry' && spell.id === 'expelliarmus') iv *= 0.55;
     return iv;
   }
 
   chargeTime(p, spell) {
     let c = spell.charge / (p.stats.cast * p.wand.cast);
-    if (p.char.id === 'voldemort' && spell.id === 'avada') c *= 0.65;
+    if (p.char.id === 'voldemort' && spell.id === 'avada') c *= 0.72;
     return c;
   }
 
@@ -80,7 +81,11 @@ export class SpellSystem {
   castOrigin(p) {
     const dir = p.aimDir();
     const right = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
-    return p.eyePos().addScaledVector(dir, 0.5).addScaledVector(right, 0.16).add(new THREE.Vector3(0, -0.14, 0));
+    const cp = p.wand.castPoint || {};
+    return p.eyePos()
+      .addScaledVector(dir, cp.fwd ?? 0.5)
+      .addScaledVector(right, cp.right ?? 0.16)
+      .add(new THREE.Vector3(0, cp.up ?? -0.14, 0));
   }
 
   spreadFor(p, spell) {
@@ -93,6 +98,7 @@ export class SpellSystem {
   }
 
   fire(p, spell) {
+    p.spawnProtT = 0; // deathmatch grace ends the instant you choose violence
     const cost = this.manaCost(p, spell);
     p.mana = Math.max(0, p.mana - cost);
     if (spell.charges) p.charges[spell.id]--;
@@ -115,9 +121,7 @@ export class SpellSystem {
       const up = new THREE.Vector3().crossVectors(right, dir).normalize();
       dir.addScaledVector(right, grand() * spread).addScaledVector(up, grand() * spread).normalize();
     }
-    const eye = p.eyePos();
-    const right = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
-    const origin = eye.clone().addScaledVector(dir, 0.5).addScaledVector(right, 0.16).add(new THREE.Vector3(0, -0.14, 0));
+    const origin = this.castOrigin(p);
 
     const lob = spell.kind === 'lob';
     const speed = spell.speed * (spell.kind === 'bolt' ? (p.disc?.boltSpeed ?? 1) : 1);
@@ -166,7 +170,7 @@ export class SpellSystem {
       this.stopShield(p);
     }
     if (p.shielding) {
-      const greaterGood = p.char.id === 'dumbledore' ? 0.6 : 1; // his shield barely sips
+      const greaterGood = p.char.id === 'dumbledore' ? 0.65 : 1; // his shield barely sips
       p.mana -= spell.drain * p.wand.manaMult * (p.disc?.drainMult ?? 1) * greaterGood * dt;
       if (p.mana <= 0) {
         p.mana = 0;
@@ -318,6 +322,7 @@ export class SpellSystem {
         pr.fx.group.position.set(pr.x, pr.y, pr.z);
         pr.fx.group.lookAt(pr.x + pr.vx, pr.y + pr.vy, pr.z + pr.vz);
         if (pr.fx.ring.visible) pr.fx.ring.rotation.z += dt * 13;
+        if (pr.fx.orbit?.visible) pr.fx.orbit.rotation.z -= dt * 11; // motes corkscrew
         game.effects.trailTick(pr.fx.group.position, pr.spell, dt);
         // first dip into water: a splash, then the bolt fizzes on
         if (!pr.splashed) {
@@ -338,7 +343,7 @@ export class SpellSystem {
         // PERFECT BLOCK: shield raised at the last instant reflects the bolt at its
         // caster. Bots only get the reflect on a deliberate parry read — their
         // reflex blocks shouldn't accidentally fall inside the timing window.
-        const parryWin = SPELLS.protego.parry * (hitPlayer.char.id === 'dumbledore' ? 1.5 : 1) +
+        const parryWin = SPELLS.protego.parry * (hitPlayer.char.id === 'dumbledore' ? 1.35 : 1) +
           (hitPlayer.disc?.parryBonus ?? 0);
         const perfect = sp.kind === 'bolt' &&
           game.time - hitPlayer.shieldOnAt <= parryWin &&
@@ -452,11 +457,11 @@ export class SpellSystem {
 
     if (sp.disarm) victim.applyDisarm(sp.disarm, game, dir);
     // McGonagall's body-binds hold longer
-    if (sp.freeze) victim.applyFreeze(sp.freeze * (owner.char.id === 'mcgonagall' ? 1.4 : 1), game);
+    if (sp.freeze) victim.applyFreeze(sp.freeze * (owner.char.id === 'mcgonagall' ? 1.3 : 1), game);
     const dot = owner.disc?.dotMult ?? 1; // Hexer: afflictions tick harder and longer
     if (sp.snare) victim.applySnare(sp.snare * dot, game);
     // Umbridge's decrees stick: longer silences
-    if (sp.silence) victim.applySilence(sp.silence * dot * (owner.char.id === 'umbridge' ? 1.5 : 1), game);
+    if (sp.silence) victim.applySilence(sp.silence * dot * (owner.char.id === 'umbridge' ? 1.35 : 1), game);
     if (sp.bleed) victim.bleeds.push({ t: sp.bleed[1] * dot, dps: sp.bleed[0] * owner.effPower() * dot, attacker: owner, spell: sp });
     // Umbridge: hex hits file a surveillance report — victim pinned on squad radar
     if (owner.char.id === 'umbridge' && sp.slot === 3 && owner.team !== victim.team) {
@@ -466,7 +471,7 @@ export class SpellSystem {
     }
     if (owner.char.id === 'bellatrix') {
       if (victim.slowT <= 0.25) game.effects.crucioFX(victim); // fresh application: writhing crackle
-      victim.slowT = Math.max(victim.slowT, 1.5 * dot);
+      victim.slowT = Math.max(victim.slowT, 1.2 * dot);
       if (victim.isHuman) game.hud.notice('CRUCIO — SLOWED!', 'bad');
     }
     game.damage(victim, owner, dmg, sp, isHS, hitPos);
@@ -475,36 +480,53 @@ export class SpellSystem {
   detonate(pr, pos, normal) {
     const game = this.game;
     const sp = pr.spell;
+    const lobRadius = (r) => r * (pr.owner.wand.lobRadius ?? 1);
     if (sp.id === 'bombarda') {
       game.effects.explode(pos, sp);
       // Ginny's Bat-Bogey Barrage: wider blast
-      const radius = sp.radius * (pr.owner.char.id === 'ginny' ? 1.25 : 1);
+      const radius = lobRadius(sp.radius) * (pr.owner.char.id === 'ginny' ? 1.2 : 1);
       game.explosion(pos, radius, sp.dmg, pr.owner, sp);
       game.noise({ pos }, 40);
     } else if (sp.flash) {
       const fpos = normal ? pos.clone().addScaledVector(normal, 0.4) : pos.clone();
       game.effects.flashAt(fpos);
-      game.flashPlayers(fpos, sp);
+      game.flashPlayers(fpos, { ...sp, radius: lobRadius(sp.radius) });
       game.noise({ pos }, 30);
     } else if (sp.smoke) {
-      game.effects.spawnSmoke(pos, sp);
+      game.effects.spawnSmoke(pos, { ...sp, radius: lobRadius(sp.radius) });
       // CS rules: smoke landing on cursed fire snuffs it out
-      game.effects.douseFires(pos, sp.radius + 1.5);
+      game.effects.douseFires(pos, lobRadius(sp.radius) + 1.5);
     } else if (sp.ward) {
       // raise the guardian wall where it lands, facing back along the throw
       const yaw = Math.atan2(pr.vx, pr.vz); // wall normal points back at the caster
       const gy = game.world.groundY(pos.x, pos.z, pos.y + 0.3);
       game.effects.spawnWard(new THREE.Vector3(pos.x, gy, pos.z), yaw, pr.owner, sp);
       game.noise({ pos, team: pr.owner.team, id: pr.owner.id }, 22);
+    } else if (sp.heal) {
+      const radius = lobRadius(sp.radius);
+      let healed = 0;
+      for (const q of game.players) {
+        if (!q.alive || q.team !== pr.owner.team || q.health >= q.stats.hp) continue;
+        if (Math.abs(q.pos.y - pos.y) > 2.5) continue;
+        const d = Math.hypot(q.pos.x - pos.x, q.pos.z - pos.z);
+        if (d > radius) continue;
+        const amt = sp.heal * (1 - clamp(d / radius, 0, 0.65));
+        q.health = Math.min(q.stats.hp, q.health + amt);
+        game.effects.healFX(q);
+        healed++;
+      }
+      if (pr.owner.isHuman) {
+        game.hud.notice(healed ? `Episkey — healed ${healed} ally${healed === 1 ? '' : 'ies'}` : 'Episkey found no wounded allies', healed ? 'good' : 'info');
+      }
     } else if (sp.fire) {
       // place fire on the ground below the impact — unless it lands in water,
       // where cursed flame dies in a hiss of steam
       const gy = game.world.groundY(pos.x, pos.z, pos.y + 0.2);
       const wtr = game.world.waterAt(pos.x, pos.y, pos.z) || game.world.waterAt(pos.x, gy + 0.1, pos.z);
       if (wtr) {
-        game.effects.steamFX(new THREE.Vector3(pos.x, wtr.y + 0.1, pos.z), sp.radius);
+        game.effects.steamFX(new THREE.Vector3(pos.x, wtr.y + 0.1, pos.z), lobRadius(sp.radius));
       } else {
-        game.effects.spawnFire(new THREE.Vector3(pos.x, gy + 0.05, pos.z), sp, pr.owner);
+        game.effects.spawnFire(new THREE.Vector3(pos.x, gy + 0.05, pos.z), { ...sp, radius: lobRadius(sp.radius) }, pr.owner);
       }
       game.noise({ pos }, 25);
     }
@@ -525,7 +547,7 @@ export class SpellSystem {
         if (dx * dx + dz * dz < (f.r + 0.35) ** 2 && Math.abs(p.pos.y - f.y) < 2.4) {
           if (p === f.owner || p.team !== f.owner.team) {
             let d = f.dps * dt * f.owner.effPower() * (f.owner.disc?.dotMult ?? 1);
-            if (p.char.id === 'ron') d *= 0.75;
+            if (p.char.id === 'ron') d *= 0.8;
             if (p.disc?.blastResist) d *= p.disc.blastResist;
             if (p.burnT <= 0) game.effects.igniteFX(p); // catching fire
             p.burnT = Math.max(p.burnT, 0.8);

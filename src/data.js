@@ -35,15 +35,15 @@ export const SPELLS = {
     id: 'stupefy', name: 'Stupefy', kind: 'bolt', slot: 1, icon: 'bolt',
     dmg: 26, interval: 0.25, speed: 48, mana: 7, spread: [0.32, 2.15],
     recoil: 0.015, bloom: 0.5,
-    falloff: [28, 64, 0.72], hs: 2, kb: 2.25, stagger: 0.14, killReward: 300, price: 0,
+    falloff: [26, 60, 0.62], hs: 2, kb: 2.25, stagger: 0.14, killReward: 300, price: 0,
     color: 0xff3b4a, glow: 0xff97a3,
-    role: 'Rifle', desc: 'Rapid red stunner. Four body hits drop a full-health wizard.',
+    role: 'Rifle', desc: 'Rapid red stunner. Four close body hits drop a wizard — but it bleeds power at range.',
   },
   avada: {
     id: 'avada', name: 'Avada Kedavra', kind: 'bolt', slot: 2, icon: 'skull',
     dmg: 250, interval: 1.55, charge: 1.5, speed: 64, mana: 55, spread: [0.04, 5.2],
     recoil: 0.058, bloom: 0, zoom: 0.55,
-    falloff: null, hs: 1, kb: 3.7, killReward: 150, price: 5400, chargeSlow: 0.52, // hs 1: it kills on ANY contact — no headshot math needed; slower bolt + longer charge make it dodgeable
+    falloff: null, hs: 1, kb: 3.7, killReward: 150, price: 5400, chargeSlow: 0.45, // hs 1: it kills on ANY contact — no headshot math needed; slower bolt + longer charge + rooted charge make it dodgeable and beatable by a rusher who closes the gap
     color: 0x37ff6e, glow: 0xa9ffc4,
     role: 'AWP', desc: 'Hold to charge — your focus narrows (scope) — release the Killing Curse. One hit, loud and expensive.',
   },
@@ -57,11 +57,11 @@ export const SPELLS = {
   },
   expelliarmus: {
     id: 'expelliarmus', name: 'Expelliarmus', kind: 'bolt', slot: 3, icon: 'swirl',
-    dmg: 14, interval: 0.8, speed: 62, mana: 12, spread: [0.3, 2.0],
+    dmg: 14, interval: 0.9, speed: 62, mana: 12, spread: [0.3, 2.0],
     recoil: 0.011, bloom: 0.28,
-    falloff: null, hs: 1, kb: 2.8, disarm: 2.6, killReward: 300, price: 0,
+    falloff: null, hs: 1, kb: 2.8, disarm: 2.0, killReward: 300, price: 0,
     color: 0xffb347, glow: 0xffe2ad,
-    role: 'Utility', desc: 'Snaps the wand away and shoves them back: no casting for 2.6s unless they scramble to recover it. Chips on contact.',
+    role: 'Interrupt', desc: 'Snaps the wand away and shoves them back: no casting for 2.0s unless they scramble to recover it. An interrupt for a charge or a shield — too slow to lock a wizard down on its own.',
   },
   petrificus: {
     id: 'petrificus', name: 'Petrificus Totalus', kind: 'bolt', slot: 3, icon: 'bind',

@@ -378,8 +378,10 @@ export class SpellSystem {
           if (hitPlayer.isHuman) game.hud.notice('PERFECT BLOCK — curse reflected!', 'good');
           continue; // projectile lives on, flying back
         }
-        const drain = (sp.kind === 'lob' ? 30 : sp.dmg * SPELLS.protego.drainHit) * hitPlayer.wand.manaMult * (hitPlayer.disc?.drainMult ?? 1);
-        hitPlayer.mana -= Math.min(60, drain);
+        // a held Protego is the answer to rapid bolts — but the Killing Curse
+        // nearly shatters it (Pick pressures the turtle) and a blast leans on it hard
+        const drain = (sp.kind === 'lob' ? 42 : sp.dmg * SPELLS.protego.drainHit) * hitPlayer.wand.manaMult * (hitPlayer.disc?.drainMult ?? 1);
+        hitPlayer.mana -= Math.min(sp.id === 'avada' ? 95 : 60, drain);
         const boltDir = new THREE.Vector3(pr.vx, pr.vy, pr.vz).normalize();
         game.effects.shieldHit(hitPlayer, hitPos, boltDir);
         // blocked hits shove the shield-bearer back a touch
@@ -463,8 +465,8 @@ export class SpellSystem {
     if (sp.dmg >= 10 && owner !== victim) {
       if (victim.freezeT > 0) { comboKind = 'shatter'; comboMult = 1.5; }
       else if (victim.staggerT > 0) { comboKind = 'crush'; comboMult = 1.3; }
-      else if (victim.snareT > 0) { comboKind = 'crush'; comboMult = 1.25; }
-      else if (victim.slowT > 0) { comboKind = 'crush'; comboMult = 1.2; }
+      else if (victim.snareT > 0) { comboKind = 'crush'; comboMult = 1.3; }
+      else if (victim.slowT > 0) { comboKind = 'crush'; comboMult = 1.25; }
     }
     if (pr.reflected) comboMult *= 1.4; // a parried curse returns angrier
     dmg *= comboMult;

@@ -66,6 +66,9 @@ export class Bot {
     this.execSpell = null;      // utility cast in flight (held by sim time)
     this.execUntil = 0;
     this.charging = false;
+    this.combatSpell = null;    // committed combat pick — held for a short window
+    this.combatSpellUntil = 0;  // when that pick is up for re-roll
+    this.lastCombatSpell = null;// previous pick, penalized so threats rotate
     this.crouchT = 0;
     this.crouchUntil = 0;   // timed crouch — auto-stands when it expires
     this.wanderT = 0;
@@ -112,6 +115,9 @@ export class Bot {
     this.utilAt = this.game.time + rand(3, 9);
     this.execSpell = null;
     this.execUntil = 0;
+    this.combatSpell = null;
+    this.combatSpellUntil = 0;
+    this.lastCombatSpell = null;
     this.peek = null;
     this.peekT = rand(6, 14);
     this.retreating = 0;
@@ -701,32 +707,12 @@ export class Bot {
     if (p.silenceT > 0.15) this.retreating = Math.max(this.retreating, p.silenceT);
     this.retreating = Math.max(0, this.retreating - 0.13);
 
-    // choose spell — snipers reach for the Avada much sooner
-    let want = p.slot1();
-    const avadaRange = 10 + 14 * (1 - ai.snipe);
-    const useAvada = p.ownsUsable('avada') && dist > avadaRange && p.mana > SPELLS.avada.mana * p.wand.manaMult;
-    if (useAvada) want = 'avada';
-    // snap a Body-Bind on a mid-range target to set up the kill
-    if (!useAvada && p.ownsUsable('petrificus') && enemy.freezeT <= 0 && dist > 8 && dist < 30 &&
-        p.mana > SPELLS.petrificus.mana * 1.2 && Math.random() < sk.util * 0.05) {
-      want = 'petrificus';
-    }
-    // hexes: trip a rusher / runner with Impedimenta; Silencio shuts down a
-    // charging Avada, a turtled shield, or the defuser (it cancels the cast)
-    if (!useAvada && want === p.slot1()) {
-      if (p.ownsUsable('silencio') && enemy.silenceT <= 0 && dist < 34 &&
-          (enemy.charge || (enemy.shielding && dist < 24) || g.relic.defuser === enemy) &&
-          p.mana > SPELLS.silencio.mana * 1.2 && Math.random() < 0.10 + sk.util * 0.25) {
-        want = 'silencio';
-      } else if (p.ownsUsable('expelliarmus') && enemy.disarmT <= 0 && dist > 5 && dist < 26 &&
-          (enemy.charge || enemy.shielding || enemy.curSpell === 'avada' || enemy.mana < 28) &&
-          p.mana > SPELLS.expelliarmus.mana * 1.2 && Math.random() < 0.12 + sk.util * 0.22) {
-        want = 'expelliarmus';
-      } else if (p.ownsUsable('impedimenta') && enemy.snareT <= 0 && dist > 5 && dist < 24 &&
-          enemy.horizSpeed > 3 && p.mana > SPELLS.impedimenta.mana * 1.2 && Math.random() < sk.util * 0.07) {
-        want = 'impedimenta';
-      }
-    }
+    // choose spell — a weighted pick, committed for a short window, so a duel
+    // shows real variety instead of the same bolt on repeat. Snipers still lean
+    // on the Avada and hexers still favor the textbook disable, but everyone
+    // rotates their threats so you get hit by different things.
+    const want = this.pickCombatSpell(enemy, dist);
+    const useAvada = want === 'avada';
     if (p.curSpell !== want && !p.charge && !this.execUntil) { // a utility throw in flight keeps the wand
       p.curSpell = want;
       p.fp?.onSwitch?.();
@@ -881,6 +867,73 @@ export class Bot {
     this.path = null; // drop path while fighting
   }
 
+  // Weighted combat spell pick. Every owned, castable spell earns a base weight
+  // so fights stay varied; the textbook moment for a hex (a charging Avada, a
+  // sprinting target, a turtled shield) stacks a bonus on top. The pick is held
+  // for a short window and the previous spell is penalized, so a bot rotates
+  // through its kit instead of spamming one bolt the whole duel.
+  pickCombatSpell(enemy, dist) {
+    const p = this.p;
+    const g = this.game;
+    const sk = this.skill;
+    const ai = this.ai;
+    // never interrupt an Avada that's already charging
+    if (p.charge && p.curSpell === 'avada') return 'avada';
+    const usable = (id) => id === p.slot1() || p.ownsUsable(id);
+    const manaOk = (id, buf = 1.15) => p.mana > g.spells.manaCost(p, SPELLS[id]) * buf;
+    // hold the current pick for its window unless it has gone unusable (and
+    // don't keep charging the Avada once a target has closed point-blank)
+    const cur = this.combatSpell;
+    if (cur && g.time < this.combatSpellUntil && !this.execUntil &&
+        usable(cur) && manaOk(cur, 1.0) && !(cur === 'avada' && dist < 8)) {
+      return cur;
+    }
+
+    const cand = [];
+    const add = (id, w, buf = 1.15) => { if (w > 0 && usable(id) && manaOk(id, buf)) cand.push({ id, w }); };
+    // the workhorse bolt — still the most common single choice, but it no longer
+    // crowds out the rest of the kit
+    add(p.slot1(), 1.3);
+    // the Avada: at range only, weighted hard for snipers, a rare flourish for brawlers
+    if (dist > 10 + 14 * (1 - ai.snipe)) add('avada', 0.5 + ai.snipe * 2.6, 1.0);
+    // body-bind: lock a mid-range target down to set up the kill
+    if (enemy.freezeT <= 0 && dist > 6 && dist < 32) {
+      add('petrificus', 0.55 + (dist > 8 && dist < 26 ? 0.5 : 0) + sk.util * 0.5);
+    }
+    // snare: trip a rusher or a runner
+    if (enemy.snareT <= 0 && dist > 5 && dist < 26) {
+      add('impedimenta', 0.55 + (enemy.horizSpeed > 3 ? 0.8 : 0) + sk.util * 0.45);
+    }
+    // silence: shut down a charging Avada, a turtled shield, or the defuser
+    if (enemy.silenceT <= 0 && dist < 34) {
+      const ideal = enemy.charge || (enemy.shielding && dist < 24) || g.relic.defuser === enemy;
+      add('silencio', 0.5 + (ideal ? 1.5 : 0) + sk.util * 0.45);
+    }
+    // disarm: punish a charge, a shield, or a low-mana scramble (an unlimited
+    // bolt, so it carries most of the non-Stupefy variety in a long fight)
+    if (enemy.disarmT <= 0 && dist > 4 && dist < 28) {
+      const ideal = enemy.charge || enemy.shielding || enemy.curSpell === 'avada' || enemy.mana < 28;
+      add('expelliarmus', 0.7 + (ideal ? 1.2 : 0) + sk.util * 0.4);
+    }
+    // a lobbed shell drops a different kind of threat into brawling range
+    if (dist > 9 && dist < 28) add('bombarda', 0.6 + sk.util * 0.45, 1.3);
+
+    if (!cand.length) { this.combatSpell = p.slot1(); return p.slot1(); }
+    // don't fire the exact same spell back-to-back — push the rotation along
+    if (this.lastCombatSpell) for (const c of cand) if (c.id === this.lastCombatSpell) c.w *= 0.4;
+
+    let total = 0;
+    for (const c of cand) total += c.w;
+    let r = Math.random() * total;
+    let id = cand[cand.length - 1].id;
+    for (const c of cand) { if ((r -= c.w) <= 0) { id = c.id; break; } }
+
+    this.lastCombatSpell = this.combatSpell;
+    this.combatSpell = id;
+    this.combatSpellUntil = g.time + rand(0.5, 1.3);
+    return id;
+  }
+
   // CS-style execute: walking onto a contested area, throw the flash/smoke
   // FIRST, then entry. Attackers use it on the push, defenders on the retake.
   siteExecute(tx, tz, prefer) {
@@ -892,9 +945,9 @@ export class Bot {
     if (d < 7 || d > 38) return;
     if (Math.random() > 0.25 + this.skill.util * 0.75) { this.executedAt = g.time - 14; return; } // hesitated — re-check soon
     const usable = (id) => p.ownsUsable(id) && p.mana > SPELLS[id].mana * 1.2;
-    let id = null;
-    for (const cand of prefer) if (usable(cand)) { id = cand; break; }
-    if (!id) return;
+    const opts = prefer.filter(usable);
+    if (!opts.length) return;
+    const id = choice(opts); // rotate through the belt instead of always the first
     this.executedAt = g.time;
     const eye = p.eyePos();
     this.charging = false;
@@ -917,7 +970,7 @@ export class Bot {
     const eye = p.eyePos();
     const d = Math.hypot(mem.x - eye.x, mem.z - eye.z);
     if (d < 8 || d > 38) return;
-    const options = ['bombarda', 'lumos', 'fumos'].filter((id) => p.ownsUsable(id) && p.mana > SPELLS[id].mana * 1.3);
+    const options = ['bombarda', 'lumos', 'fumos', 'incendio'].filter((id) => p.ownsUsable(id) && p.mana > SPELLS[id].mana * 1.3);
     // a serpent flushes a known camper without exposing the caster
     if (d < 24 && p.ownsUsable('serpensortia') && p.mana > SPELLS.serpensortia.mana * 1.2 && Math.random() < 0.5) {
       options.push('serpensortia');

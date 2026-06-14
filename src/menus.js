@@ -80,6 +80,7 @@ export class Menus {
     if (state.panel === 'setup') return this.showSetup(state.setupMode || this.setup.mode);
     if (state.panel === 'settings') return this.showSettings(!!state.settingsFromPause);
     if (state.panel === 'pause') return this.showPause();
+    if (state.panel === 'multiplayer') return this.showMultiplayer();
     if (state.panel === 'end-screen' && state.endState) return this.showEnd(state.endState.game, state.endState.winner);
     return this.showMain();
   }
@@ -180,10 +181,21 @@ export class Menus {
     el('div', 'footer-note', p, 'WASD move · LMB cast · RMB Protego · R recharge · B buy · E plant/defuse · Tab scoreboard');
   }
 
-  showMultiplayer() {
+  showMultiplayer(autoJoinCode) {
     const p = this.panel('multiplayer');
     el('h2', 'panel-title', p, 'MULTIPLAYER — DEATHMATCH');
-    const name = (this.ctx.settings.lastSetup && this.ctx.settings.lastSetup.name) || 'Wizard';
+
+    const nameRow = el('div', 'mp-name-row', p);
+    el('label', 'mp-name-label', nameRow, 'NAME');
+    const nameIn = el('input', 'mp-name', nameRow);
+    nameIn.maxLength = 16;
+    nameIn.value = this.ctx.settings.playerName || 'Wizard';
+    const playerName = () => {
+      const n = (nameIn.value || '').trim() || 'Wizard';
+      this.ctx.settings.playerName = n;
+      this.ctx.saveSettings && this.ctx.saveSettings();
+      return n;
+    };
 
     const hostBtn = el('button', 'btn big', p, 'HOST GAME');
     const row = el('div', 'mp-join-row', p);
@@ -209,8 +221,13 @@ export class Menus {
       net.on('ended', () => { status.textContent = 'Host left — match ended.'; });
     };
 
-    hostBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.host(name)); };
-    joinBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.join(codeIn.value, name)); };
+    hostBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.host(playerName())); };
+    joinBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.join(codeIn.value, playerName())); };
+
+    if (autoJoinCode) {
+      codeIn.value = String(autoJoinCode).toUpperCase();
+      onWelcome(this.ctx.net.join(autoJoinCode, playerName()));
+    }
 
     const foot = el('div', 'setup-foot', p);
     const back = el('button', 'btn big', foot, '← BACK');

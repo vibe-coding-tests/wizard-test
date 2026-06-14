@@ -162,8 +162,8 @@ const menus = new Menus(uiEl, {
   startGame, quitToMenu, resumeGame,
   getGame: () => game,
   net: {
-    host: (name) => { net = new Net(RELAY_URL); net.host(name); return net; },
-    join: (room, name) => { net = new Net(RELAY_URL); net.join(room, name); return net; },
+    host: (name) => { if (net) net.close(); net = new Net(RELAY_URL); net.host(name); return net; },
+    join: (room, name) => { if (net) net.close(); net = new Net(RELAY_URL); net.join(room, name); return net; },
     current: () => net,
     relayUrl: RELAY_URL,
   },
@@ -240,6 +240,7 @@ function disposeGame() {
 
 function quitToMenu() {
   disposeGame();
+  if (net) { net.close(); net = null; }
   paused = false;
   input.lockEnabled = true;
   input.unlock();
@@ -369,12 +370,7 @@ if (params.get('auto')) {
   startGame(setup, { requestLock: false, loading: false }); // tests build synchronously
 } else if (params.get('room')) {
   menus.showMain();
-  menus.showMultiplayer();
-  const n = net = new Net(RELAY_URL);
-  n.join(params.get('room'), 'Wizard');
-  n.on('welcome', () => {
-    n.on('message', (g) => { if (g.t === 'start') menus.startMpGame(n, false, g.setup); });
-  });
+  menus.showMultiplayer(params.get('room'));
 } else {
   menus.showMain();
 }

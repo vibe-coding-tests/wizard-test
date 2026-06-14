@@ -5,11 +5,10 @@
 import { WebSocketServer } from 'ws';
 import { RoomRegistry } from './rooms.js';
 
-let _nextId = 1;
-
 export function attach(wss, { codeGen } = {}) {
   const reg = new RoomRegistry(codeGen);
   const socks = new Map(); // id -> ws
+  let nextId = 1;
 
   const send = (id, obj) => {
     const ws = socks.get(id);
@@ -17,7 +16,7 @@ export function attach(wss, { codeGen } = {}) {
   };
 
   wss.on('connection', (ws) => {
-    const id = `c${_nextId++}`;
+    const id = `c${nextId++}`;
     ws.connId = id;
     socks.set(id, ws);
 
@@ -36,9 +35,13 @@ export function attach(wss, { codeGen } = {}) {
         for (const pid of reg.recipients(id)) send(pid, { t: 'peerJoin', id, name: reg.nameOf(id) });
         return;
       }
+      // Dumb relay: forward the client's message verbatim (spread first so our
+      // `from` stamp can't be spoofed). Friends-only — no key filtering.
       const out = { ...m, from: id };
       for (const pid of reg.recipients(id)) send(pid, out);
     });
+
+    ws.on('error', () => { /* ignore; 'close' handles cleanup */ });
 
     ws.on('close', () => {
       socks.delete(id);

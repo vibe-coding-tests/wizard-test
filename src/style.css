@@ -759,3 +759,11 @@ tr.dead .sb-dot { color: #555; }
 .buy-card.owned .card-price { color: #7dffa0; font-size: 11px; }
 .card-stats { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
 .card-desc { margin-top: 7px; font-size: 11px; color: var(--dim); line-height: 1.35; }
+
+.mp-name-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.mp-name-label { opacity: 0.7; font-size: 0.85em; }
+.mp-name { width: 160px; }
+.mp-join-row { display: flex; gap: 8px; margin: 12px 0; }
+.mp-code { width: 120px; text-transform: uppercase; letter-spacing: 4px; text-align: center; }
+.mp-status { margin-top: 10px; min-height: 2em; opacity: 0.9; }
+.mp-link { user-select: all; color: #7dffa0; }

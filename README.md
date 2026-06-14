@@ -31,6 +31,34 @@ On Windows? See [WINDOWS.md](WINDOWS.md) for setup steps.
   Incantatem. First to 8 rounds wins; sides swap at halftime.
 - **Deathmatch:** team kill race with every spell unlocked.
 
+## Multiplayer (beta)
+
+Host a deathmatch and a few friends can join over the internet by room code.
+
+```bash
+npm run relay     # terminal 1 — the dumb relay server (ws://localhost:8787)
+npm start         # terminal 2 — the game
+```
+
+In the game: **MULTIPLAYER → HOST GAME** prints a four-letter room code and a
+share link (`?room=CODE`). Friends open that link (or type the code under
+**JOIN**), then the host hits **START DEATHMATCH**. Empty slots fill with bots.
+
+**How it works.** The relay is a dumb message forwarder — it holds no game
+logic, just rooms keyed by code. One browser is the **host**: it runs the
+authoritative simulation (bots, the match timer, damage, score) and streams a
+~15 Hz snapshot. Every client drives its own wizard locally and broadcasts its
+transform ~20 Hz; casts are replicated so everyone sees the bolts. Hits are
+self-reported to the host (a friends-only trust model).
+
+**Production.** Build with `VITE_RELAY_URL=wss://your-relay-host` so the client
+talks to your deployed relay instead of `ws://localhost:8787`. See
+[`server/README.md`](server/README.md) for deploy notes.
+
+**Current limits (Phase 1).** Deathmatch only (no Relic objective). No
+reconnect — if the host leaves, the match ends. Damage-over-time effects
+(bleed/burn) from a remote player's spells aren't replicated yet.
+
 ### Maps
 
 **The classics** — Dust II, Dust, Inferno, Aztec, Mirage, and Nuke blockouts
@@ -383,6 +411,7 @@ node scripts/v3-shots.mjs    # staged screenshots: Avada scope, snake, loot drop
 node scripts/shot.mjs        # screenshots of the glass HUD, buy menu, scoreboard, setup screen
 node scripts/rigshot.mjs     # lineup portrait of the new character models
 node scripts/debug-brain.mjs # dump attacker-bot decision state mid-round
+node scripts/net-smoke.mjs   # two-client multiplayer smoke: presence, bot snapshot, host-authoritative damage round-trip (spawns its own relay; needs the dev server)
 ```
 
 ## Performance

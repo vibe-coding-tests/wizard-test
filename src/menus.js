@@ -80,6 +80,7 @@ export class Menus {
     if (state.panel === 'setup') return this.showSetup(state.setupMode || this.setup.mode);
     if (state.panel === 'settings') return this.showSettings(!!state.settingsFromPause);
     if (state.panel === 'pause') return this.showPause();
+    if (state.panel === 'multiplayer') return this.showMultiplayer();
     if (state.panel === 'end-screen' && state.endState) return this.showEnd(state.endState.game, state.endState.winner);
     return this.showMain();
   }
@@ -174,9 +175,74 @@ export class Menus {
     };
     mk('PLAY — CURSED RELIC', 'Round-based 5v5 vs bots. Plant or dispel the Relic.', () => this.showSetup('relic'));
     mk('DEATHMATCH', 'Team kill race. All spells unlocked.', () => this.showSetup('dm'));
+    mk('MULTIPLAYER', 'Host or join a friend\'s deathmatch by room code.', () => this.showMultiplayer());
     mk('SETTINGS', 'Mouse, keybinds, crosshair, video, audio.', () => this.showSettings(false));
     mk('HOW TO PLAY', 'Controls and the rules of engagement.', () => this.showHelp());
     el('div', 'footer-note', p, 'WASD move · LMB cast · RMB Protego · R recharge · B buy · E plant/defuse · Tab scoreboard');
+  }
+
+  showMultiplayer(autoJoinCode) {
+    const p = this.panel('multiplayer');
+    el('h2', 'panel-title', p, 'MULTIPLAYER — DEATHMATCH');
+
+    const nameRow = el('div', 'mp-name-row', p);
+    el('label', 'mp-name-label', nameRow, 'NAME');
+    const nameIn = el('input', 'mp-name', nameRow);
+    nameIn.maxLength = 16;
+    nameIn.value = this.ctx.settings.playerName || 'Wizard';
+    const playerName = () => {
+      const n = (nameIn.value || '').trim() || 'Wizard';
+      this.ctx.settings.playerName = n;
+      this.ctx.saveSettings && this.ctx.saveSettings();
+      return n;
+    };
+
+    const hostBtn = el('button', 'btn big', p, 'HOST GAME');
+    const row = el('div', 'mp-join-row', p);
+    const codeIn = el('input', 'mp-code', row);
+    codeIn.placeholder = 'CODE'; codeIn.maxLength = 4;
+    const joinBtn = el('button', 'btn', row, 'JOIN');
+    const status = el('div', 'mp-status', p, '');
+
+    const onWelcome = (net) => {
+      net.on('welcome', (m) => {
+        const link = `${location.origin}${location.pathname}?room=${m.room}`;
+        status.innerHTML = `Room <b>${m.room}</b> — share: <span class="mp-link">${link}</span>` +
+          (m.isHost ? ' · you are HOST' : ' · joined');
+        if (m.isHost) {
+          const go = el('button', 'btn big', p, 'START DEATHMATCH');
+          go.onclick = () => { this.click(); this.startMpGame(net, true); };
+        } else {
+          status.innerHTML += '<br>Waiting for host to start…';
+          net.on('message', (g) => { if (g.t === 'start') this.startMpGame(net, false, g.setup); });
+        }
+      });
+      net.on('error', (m) => { status.textContent = m.reason === 'no-room' ? 'No such room.' : 'Connection error.'; });
+      net.on('ended', () => { status.textContent = 'Host left — match ended.'; });
+    };
+
+    hostBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.host(playerName())); };
+    joinBtn.onclick = () => { this.click(); onWelcome(this.ctx.net.join(codeIn.value, playerName())); };
+
+    if (autoJoinCode) {
+      codeIn.value = String(autoJoinCode).toUpperCase();
+      onWelcome(this.ctx.net.join(autoJoinCode, playerName()));
+    }
+
+    const foot = el('div', 'setup-foot', p);
+    const back = el('button', 'btn big', foot, '← BACK');
+    back.onclick = () => { this.click(); this.ctx.net.current() && this.ctx.net.current().close(); this.showMain(); };
+  }
+
+  startMpGame(net, isHost, hostSetup) {
+    const setup = hostSetup || {
+      mode: 'dm', mapId: 'dust2', team: 'order', charId: 'harry', prefWand: 'holly',
+      botsFriendly: 4, botsEnemy: 4, difficulty: 'normal', format: 'mr8',
+      squad: [], foes: [], dmBanned: [],
+    };
+    if (isHost) net.send({ t: 'start', setup });
+    this.clear();
+    this.ctx.startNetGame(setup);
   }
 
   showHelp() {

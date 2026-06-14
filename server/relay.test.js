@@ -47,5 +47,8 @@ test('host + join + relay forwarding end-to-end', async () => {
   host.close();
   await endedP;
 
-  wss.close();
+  // Tear everything down so the test runner's event loop can exit cleanly:
+  // close the still-open guest socket, then await the server shutdown.
+  guest.close();
+  await new Promise((res) => wss.close(res));
 });

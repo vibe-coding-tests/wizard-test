@@ -15,7 +15,8 @@
     "build": "vite build",
     "preview": "vite preview --open",
     "soak": "node scripts/soak.mjs",
-    "nav-audit": "node scripts/debug-nav.mjs"
+    "nav-audit": "node scripts/debug-nav.mjs",
+    "relay": "node server/relay.js"
   },
   "dependencies": {
     "three": "^0.180.0"

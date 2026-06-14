@@ -59,5 +59,13 @@ export class Net {
 
   _raw(obj) { if (this.ws && this.open) this.ws.send(JSON.stringify(obj)); }
   send(obj) { if (this.open) this._raw(obj); else this.queue.push(obj); }
-  close() { this.ws?.close(); this.ws = null; this.open = false; }
+  close() {
+    this.ws?.close();
+    this.ws = null;
+    this.open = false;
+    this.queue.length = 0;
+    this._intent = null;
+    this.peers = new Map();
+    this.id = null; this.room = null; this.isHost = false; this.hostId = null;
+  }
 }

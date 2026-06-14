@@ -67,3 +67,15 @@ test('peerJoin and peerLeave update the peers map', () => {
   sock.emitMsg({ t: 'peerLeave', id: 'c2' });
   assert.equal(net.peers.has('c2'), false);
 });
+
+test('close() resets transient state and queued messages', () => {
+  const { net, sock } = makeNet();
+  net.host('H'); sock.emitOpen();
+  sock.emitMsg({ t: 'welcome', id: 'c1', room: 'AB12', isHost: true, hostId: 'c1', peers: [{ id: 'c2', name: 'Ron' }] });
+  net.close();
+  assert.equal(net.id, null);
+  assert.equal(net.room, null);
+  assert.equal(net.isHost, false);
+  assert.equal(net.peers.size, 0);
+  assert.equal(net.queue.length, 0);
+});

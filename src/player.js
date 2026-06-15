@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { SPELLS, SLOT3, SLOT5, TEAM_INFO, EQUIP_EFFECTS, DASH, wandById, charById, disciplineById } from './data.js';
 import { moveBody, EYE_STAND, EYE_CROUCH, STAND_H } from './world.js';
 import { clamp, lerp, damp, uid, makeWand } from './utils.js';
+import { sampleBuffer, pushSample, trimBuffer } from './net/interp.js';
 
 export class Player {
   constructor(game, { name, charId, team, isHuman = false, prefWand = 'holly', discipline = null }) {
@@ -83,6 +84,9 @@ export class Player {
     this.parryBuffT = 0;  // flow surge after a perfect parry
 
     this.ctrl = { moveX: 0, moveZ: 0, jump: false, crouch: false, walkHeld: false, castHeld: false, altHeld: false, climbF: 0 };
+    this.remote = false;     // network-driven puppet (other humans)
+    this.netBuf = [];        // interpolation buffer of incoming states
+    this.netLatest = null;   // last raw state (for alive/spell/team)
     this.rig = null;
     this.fp = null;
     this.footAcc = 0;
@@ -381,6 +385,7 @@ export class Player {
 
   // -------------------------------------------------------------- update ---
   update(dt) {
+    if (this.remote) { this.updateRemote(dt); return; }
     if (!this.alive) {
       this.rig?.update(dt, this); // corpse keeps animating (ragdoll, fade)
       return;
@@ -599,6 +604,27 @@ export class Player {
     // rigs
     this.rig?.update(dt, this);
     if (this.isHuman) this.fp?.update(dt, this);
+  }
+
+  pushNetState(s) {
+    // called from Game when a peer `state` message (or host snapshot) arrives.
+    // Transform + spell only — `alive`/`health` are host-authoritative and set
+    // explicitly (host sim on the host, snapshot apply on guests).
+    this.netLatest = s;
+    if (s.sp) this.curSpell = s.sp;
+    pushSample(this.netBuf, { x: s.x, y: s.y, z: s.z, yaw: s.yaw, pitch: s.pitch }, performance.now());
+  }
+
+  updateRemote(dt) {
+    const now = performance.now();
+    trimBuffer(this.netBuf, now, 500);
+    const s = sampleBuffer(this.netBuf, now - 100); // render 100ms in the past for smoothness
+    if (s) {
+      this.pos.set(s.x, s.y, s.z);
+      this.yaw = s.yaw; this.pitch = s.pitch;
+      this.walking = !!this.netLatest?.w;
+    }
+    this.rig?.update(dt, this);
   }
 
   onCastAnim(spell) {

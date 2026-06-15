@@ -1,6 +1,7 @@
 // Casting, projectiles, hit resolution, AoE effects, Protego shields.
 import * as THREE from 'three';
 import { SPELLS, HITZONES } from './data.js';
+import { buildCast } from './net/protocol.js';
 import { segVsSphere } from './world.js';
 import { grand, DEG, clamp } from './utils.js';
 
@@ -167,6 +168,9 @@ export class SpellSystem {
     if (p.isHuman) this.game.feedback.cast(spell); // camera push + bloom on heavy casts
     this.game.noise(p, 18); // bots can hear casts
     if (spell.id === 'avada') this.game.particles.flashLight(origin, spell.color, 25, 0.25, 14);
+    if (this.game.net && p === this.game.human) {
+      this.game.net.send(buildCast(spell.id, origin, dir, 0));
+    }
   }
 
   // Protego: hold RMB

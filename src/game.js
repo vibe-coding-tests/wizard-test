@@ -15,6 +15,7 @@ import { Feedback } from './feedback.js';
 import { Comms } from './comms.js';
 import { Squad } from './squad.js';
 import { clamp, rand, choice, shuffle, yawTo } from './utils.js';
+import { buildState, buildCast, buildHit } from './net/protocol.js';
 
 export class Game {
   constructor(app, setup) {
@@ -27,6 +28,12 @@ export class Game {
     this.hud = app.hud;
     this.settings = app.settings;
     this.postfx = app.postfx || null;
+    this.net = app.net || null;
+    this.role = this.net ? (this.net.isHost ? 'host' : 'guest') : null;
+    this.netPeers = new Map(); // peerId -> remote Player
+    this.netSendT = 0;
+    this.netSnapT = 0;
+    this._authoritativeHit = false; // true only while host applies a reported hit
 
     this.mode = setup.mode; // 'relic' | 'dm'
     this.dmBanned = new Set(setup.dmBanned || []);
@@ -103,6 +110,7 @@ export class Game {
 
     if (this.mode === 'dm') this.startDeathmatch();
     else this.startRound(true);
+    if (this.net) this.bindNet();
   }
 
   // -------------------------------------------------------------- players ---
@@ -150,6 +158,173 @@ export class Game {
     };
     mkBots(s.team, clamp(s.botsFriendly, 0, 4), s.squad);
     mkBots(otherTeam(s.team), clamp(s.botsEnemy, 0, 5), s.foes);
+
+    // host owns the bots; give each a stable network id so guests can address
+    // them in snapshots and hit reports
+    if (this.role === 'host') {
+      let bn = 0;
+      for (const p of this.players) if (p.bot) p.netId = `bot${bn++}`;
+    }
+  }
+
+  // ----------------------------------------------------------------- net ---
+  addRemotePlayer(peerId, info = {}) {
+    const p = new Player(this, {
+      name: info.name || 'Wizard',
+      charId: info.charId || 'harry',
+      team: info.team || TEAM.ORDER,
+      isHuman: false,
+    });
+    p.remote = true;
+    p.bot = null;
+    p.rig = new Rig(this.scene, p);
+    p.alive = true;
+    this.players.push(p);
+    this.netPeers.set(peerId, p);
+    return p;
+  }
+
+  removeRemotePlayer(peerId) {
+    const p = this.netPeers.get(peerId);
+    if (!p) return;
+    this.scene.remove(p.rig?.group);
+    const i = this.players.indexOf(p);
+    if (i >= 0) this.players.splice(i, 1);
+    this.netPeers.delete(peerId);
+  }
+
+  bindNet() {
+    // existing peers (from the lobby welcome) become remote players now
+    for (const [pid, info] of this.net.peers) this.addRemotePlayer(pid, info);
+    this.net.on('peerJoin', (m) => this.addRemotePlayer(m.id, { name: m.name }));
+    this.net.on('peerLeave', (m) => this.removeRemotePlayer(m.id));
+    this.net.on('message', (m) => this.onNetMessage(m));
+  }
+
+  onNetMessage(m) {
+    const p = this.netPeers.get(m.from);
+    if (m.t === 'state') {
+      if (!p) { this.addRemotePlayer(m.from, { name: 'Wizard', charId: m.ch, team: m.tm }); return; }
+      if (m.tm) p.team = m.tm;
+      p.pushNetState(m);
+    } else if (m.t === 'cast') {
+      this.replayRemoteCast(p, m);
+    } else if (m.t === 'hit' && this.role === 'host') {
+      // a guest reports its own spell landing — the host (authoritative) resolves it
+      const victim = this.playerByNetId(m.target);
+      const attacker = this.netPeers.get(m.from) || null;
+      if (victim && victim.alive) {
+        this._authoritativeHit = true;
+        this.damage(victim, attacker, m.dmg, SPELLS[m.spell], !!m.hs);
+        this._authoritativeHit = false;
+      }
+    } else if (m.t === 'snapshot' && this.role === 'guest') {
+      this.applySnapshot(m);
+    }
+  }
+
+  applySnapshot(m) {
+    // host-simulated bots: transform + authoritative HP
+    for (const b of m.bots) {
+      let bp = this.netPeers.get(b.id);
+      if (!bp) bp = this.addRemotePlayer(b.id, { name: 'Bot', charId: b.ch, team: b.tm });
+      if (b.tm) bp.team = b.tm;
+      bp.health = b.hp; bp.alive = b.al;
+      bp.pushNetState({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, pitch: b.pitch, w: b.w });
+    }
+    // authoritative HP + score for everyone (bots, host, peers, and ourselves)
+    for (const nid in m.hp) {
+      const s = m.hp[nid];
+      const pl = this.playerByNetId(nid);
+      if (!pl) continue;
+      pl.kills = s.k; pl.deaths = s.d; pl.assists = s.a;
+      if (pl === this.human) {
+        this.human.health = s.hp;
+        if (s.al === false && this.human.alive) this.killLocalHuman();
+        else if (s.al === true && !this.human.alive) { this.dmSpawn(this.human); this.hud.closeDeath(); }
+      } else {
+        pl.health = s.hp;
+        pl.alive = s.al;
+      }
+    }
+  }
+
+  // map a Player to its stable network id, and back
+  netIdOf(p) {
+    if (p === this.human) return this.net?.id || null;
+    for (const [pid, rp] of this.netPeers) if (rp === p) return pid;
+    return p.netId || null; // host bots carry a netId from buildPlayers
+  }
+
+  playerByNetId(id) {
+    if (id === this.net?.id) return this.human;
+    const rp = this.netPeers.get(id);
+    if (rp) return rp;
+    return this.players.find((p) => p.netId === id) || null;
+  }
+
+  // the host says our local human died/respawned — mirror it without re-broadcasting
+  // (the host owns the kill: scoring, killfeed and respawn timing all live there)
+  killLocalHuman() {
+    const h = this.human;
+    if (!h.alive) return;
+    h.health = 0;
+    h.alive = false;
+    this.spells.cancelCharge(h);
+    this.spells.stopShield(h);
+    this.deathCamT = 2.2;
+    this.spectIdx = 0;
+    this.specActive = false;
+    this.hud.openBuy(false);
+    this.hud.showDeath(null, null);
+  }
+
+  replayRemoteCast(p, m) {
+    if (!p) return;
+    const spell = SPELLS[m.spell];
+    if (!spell) return;
+    p.curSpell = m.spell;
+    // aim the puppet using the cast direction so the bolt flies correctly;
+    // position comes from interpolation (origin error is ~100ms, cosmetic only).
+    if (m.dir) {
+      const d = m.dir;
+      p.pitch = Math.asin(Math.max(-1, Math.min(1, d.y)));
+      p.yaw = Math.atan2(-d.x, -d.z);
+    }
+    this.spells.fire(p, spell);
+  }
+
+  netTick(realDt) {
+    this.netSendT += realDt;
+    if (this.netSendT >= 0.05) { // ~20 Hz
+      this.netSendT = 0;
+      const h = this.human;
+      this.net.send(buildState({
+        pos: h.pos, yaw: h.yaw, pitch: h.pitch, walking: h.walking,
+        charId: h.charId, team: h.team, curSpell: h.curSpell, alive: h.alive,
+      }));
+    }
+    // host owns bots, HP and score — stream an authoritative snapshot ~15 Hz
+    if (this.role === 'host') {
+      this.netSnapT += realDt;
+      if (this.netSnapT >= 0.066) {
+        this.netSnapT = 0;
+        const bots = [];
+        for (const p of this.players) {
+          if (!p.bot) continue;
+          bots.push({
+            id: p.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
+            w: !!p.walking, al: p.alive, hp: p.health, ch: p.charId, tm: p.team,
+          });
+        }
+        const hp = {};
+        for (const p of this.players) {
+          const nid = this.netIdOf(p);
+          if (nid) hp[nid] = { hp: p.health, al: p.alive, k: p.kills, d: p.deaths, a: p.assists };
+        }
+        this.net.send({ t: 'snapshot', bots, hp });
+      }
+    }
   }
 
   teamPlayers(team) { return this.players.filter((p) => p.team === team); }
@@ -369,6 +544,21 @@ export class Game {
   damage(victim, attacker, amount, spell, isHS = false, hitPos = null, silent = false) {
     if (!victim.alive || this.over) return;
     if (attacker && attacker !== victim && attacker.team === victim.team) return;
+
+    // --- networking authority ---
+    // Guests don't own HP: a guest's own spell landing is reported to the host
+    // (which resolves it); every other damage is ignored — the host streams the
+    // authoritative HP back via snapshots.
+    if (this.role === 'guest') {
+      if (!silent && attacker === this.human) {
+        const targetId = this.netIdOf(victim);
+        if (targetId) this.net.send(buildHit(targetId, spell?.id || 'unknown', Math.round(amount), !!isHS));
+      }
+      return;
+    }
+    // On the host, a remote puppet's replayed cast is cosmetic — its real damage
+    // arrives as the caster's `hit` report (applied with _authoritativeHit set).
+    if (attacker?.remote && !this._authoritativeHit) return;
     if (victim.spawnProtT > 0 && attacker && attacker !== victim) {
       if (attacker.isHuman && !silent) this.hud.notice('Target is spawn-protected', 'info');
       return;
@@ -576,8 +766,16 @@ export class Game {
       }
       setTimeout(() => {
         if (!this.over && this.mode === 'dm') {
-          this.dmSpawn(victim);
-          if (victim.isHuman) this.hud.closeDeath();
+          if (victim.remote) {
+            // host owns HP/alive; the guest owns its own position — revive in
+            // place and let the guest stream its self-chosen respawn spot
+            victim.alive = true;
+            victim.health = victim.stats.hp;
+            victim.spawnProtT = 3;
+          } else {
+            this.dmSpawn(victim);
+            if (victim.isHuman) this.hud.closeDeath();
+          }
         }
       }, ROUND.dmRespawn * 1000);
       return;
@@ -1325,10 +1523,12 @@ export class Game {
 
     // state machine
     if (this.mode === 'dm') {
-      this.dmTimer -= dt;
-      if (this.dmTimer <= 0) {
-        this.finishMatch(this.deathmatchWinner(false));
-        return;
+      if (this.role !== 'guest') {
+        this.dmTimer -= dt;
+        if (this.dmTimer <= 0) {
+          this.finishMatch(this.deathmatchWinner(false));
+          return;
+        }
       }
     } else if (this.state === 'freeze') {
       this.stateT -= dt;
@@ -1365,7 +1565,7 @@ export class Game {
     }
 
     // bots
-    for (const p of this.players) if (p.bot && p.alive) p.bot.update(dt);
+    if (this.role !== 'guest') for (const p of this.players) if (p.bot && p.alive) p.bot.update(dt);
 
     // squad coordinator: reactive team calls (synchronized executes, rotations,
     // retakes) on a slow ~2Hz tick, phase-offset per team
@@ -1373,6 +1573,7 @@ export class Game {
 
     // players
     for (const p of this.players) p.update(dt);
+    if (this.net) this.netTick(realDt);
 
     // soft player-vs-player separation (keeps bots from stacking)
     for (let i = 0; i < this.players.length; i++) {

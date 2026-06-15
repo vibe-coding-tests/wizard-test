@@ -11,6 +11,10 @@ import { HUD } from './hud.js';
 import { Menus } from './menus.js';
 import { Game } from './game.js';
 import { ROUND } from './data.js';
+import { Net } from './net/net.js';
+
+const RELAY_URL = import.meta.env.VITE_RELAY_URL || 'ws://localhost:8787';
+let net = null;
 
 const DEFAULT_SETTINGS = {
   sens: 1.0,
@@ -157,6 +161,13 @@ const menus = new Menus(uiEl, {
   saveSettings, applySettings,
   startGame, quitToMenu, resumeGame,
   getGame: () => game,
+  net: {
+    host: (name) => { if (net) net.close(); net = new Net(RELAY_URL); net.host(name); return net; },
+    join: (room, name) => { if (net) net.close(); net = new Net(RELAY_URL); net.join(room, name); return net; },
+    current: () => net,
+    relayUrl: RELAY_URL,
+  },
+  startNetGame,
 });
 
 function startGame(setup, { requestLock = true, loading = true } = {}) {
@@ -169,7 +180,7 @@ function startGame(setup, { requestLock = true, loading = true } = {}) {
     postfx.setScene(scene);
     paused = false;
     game = window.__game = new Game({
-      scene, camera, renderer, audio, input, hud, settings, postfx,
+      scene, camera, renderer, audio, input, hud, settings, postfx, net,
       onMatchEnd: (winner) => {
         setTimeout(() => {
           if (!game) return;
@@ -206,6 +217,10 @@ function startGame(setup, { requestLock = true, loading = true } = {}) {
   }
 }
 
+function startNetGame(setup) {
+  startGame(setup, { requestLock: true, loading: true });
+}
+
 let endedGame = null;
 function disposeGameKeepStats() {
   // keep the Game object alive for the end screen tables, but stop simulating
@@ -225,6 +240,7 @@ function disposeGame() {
 
 function quitToMenu() {
   disposeGame();
+  if (net) { net.close(); net = null; }
   paused = false;
   input.lockEnabled = true;
   input.unlock();
@@ -352,6 +368,9 @@ if (params.get('auto')) {
     };
   }
   startGame(setup, { requestLock: false, loading: false }); // tests build synchronously
+} else if (params.get('room')) {
+  menus.showMain();
+  menus.showMultiplayer(params.get('room'));
 } else {
   menus.showMain();
 }

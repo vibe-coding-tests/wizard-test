@@ -14,13 +14,13 @@ node --version
 
 ## 2. Get the game files
 
-**No Git? Just download the ZIP.** On the [GitHub page](https://github.com/char-boomer-remakes/wizard-duel), click the green **Code** button, choose **Download ZIP**, then right-click the file and **Extract All**. That gives you a `wizard-duel` folder — no extra tools needed.
+**No Git? Just download the ZIP.** On the [GitHub page](https://github.com/vibe-coding-tests/opus-test), click the green **Code** button, choose **Download ZIP**, then right-click the file and **Extract All**. That gives you an `opus-test` folder — no extra tools needed.
 
 **If you have Git**, clone the repo instead:
 
 ```powershell
-git clone https://github.com/char-boomer-remakes/wizard-duel.git
-cd wizard-duel
+git clone https://github.com/vibe-coding-tests/opus-test.git
+cd opus-test
 ```
 
 (Don't have Git but want it? Grab it from [git-scm.com](https://git-scm.com/download/win) and run the installer with the defaults.)

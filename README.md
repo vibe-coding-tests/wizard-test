@@ -20,8 +20,8 @@ synthesized at runtime — no CDN or external assets.
 ## Run it
 
 ```bash
-git clone https://github.com/char-boomer-remakes/wizard-duel.git
-cd wizard-duel
+git clone https://github.com/vibe-coding-tests/opus-test.git
+cd opus-test
 npm install
 npm start
 ```

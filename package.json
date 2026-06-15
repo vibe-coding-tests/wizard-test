@@ -6,12 +6,14 @@
   "description": "DuelStrike 1.6 — CS 1.6 style wizard dueling, fully offline",
   "repository": {
     "type": "git",
-    "url": "https://github.com/char-boomer-remakes/wizard-duel.git"
+    "url": "https://github.com/vibe-coding-tests/opus-test.git"
   },
   "scripts": {
     "start": "vite --open",
     "dev": "vite --open",
     "test": "node --test \"tests/**/*.test.mjs\" \"src/**/*.test.js\"",
+    "test:server": "npm test --prefix server",
+    "test:all": "npm test && npm test --prefix server",
     "build": "vite build",
     "preview": "vite preview --open",
     "soak": "node scripts/soak.mjs",

@@ -144,18 +144,21 @@ champion's personality blurb.
 
 Stupefy (rifle), Avada Kedavra (charged one-hit AWP), Expelliarmus (2s disarm),
 Petrificus Totalus (body-bind), Impedimenta (snare jinx), Silencio (anti-cast
-hex), Bombarda (HE), Lumos Maxima (flash), Fumos (smoke), Incendio (molotov),
-Expecto Patronum (ward wall), Serpensortia (hunting snake), Protego (shield),
-plus Snape's exclusive Sectumsempra bleed bolt. All spells are projectiles
-with travel time; your own Bombarda/Incendio can hurt you.
+hex), Porcus Hex (polymorph), Rictusempra (tickle/slow hex), Bombarda (HE),
+Lumos Maxima (flash), Fumos (smoke), Incendio (molotov), Expecto Patronum (ward
+wall), Episkey (lobbed team heal), Serpensortia (hunting snake), Protego
+(shield), plus Snape's exclusive Sectumsempra bleed bolt. All spells are
+projectiles with travel time; your own Bombarda/Incendio can hurt you.
 
-**The hex school (slot 3)** — four disables, each with different counterplay:
+**The hex school (slot 3)** — six disables, each with different counterplay:
 Expelliarmus knocks the wand out of your hands (sprint to it to recover
 early), Petrificus binds you solid until a hard hit shatters it, Impedimenta
-snares — 45% slower, no jumping, cleansable with Finite — and Silencio steals
-your voice: no casting *and no Protego* for 2.4s, but your legs still work.
-Silencio interrupts a charging Avada and shuts down a turtled shield; bots
-save it for exactly those moments.
+snares — 45% slower, no jumping, cleansable with Finite — Silencio steals
+your voice: no casting *and no Protego* for 1.8s, but your legs still work —
+Porcus briefly transfigures you into a pig (you can scurry, but not cast or
+shield), and Rictusempra is a fast tickling jinx for light damage and a 30%
+slow. Silencio interrupts a charging Avada and shuts down a turtled shield;
+bots save it for exactly those moments.
 
 ### Recoil, accuracy, and the scope
 
@@ -211,7 +214,7 @@ hexes, Ron wards, Draco ghosts around).
 
 ### Bot AI: difficulty and personalities
 
-Five difficulty tiers (Easy → Normal → Hard → Expert → **Legend**) scale
+Five difficulty tiers (Rookie → Regular → Veteran → Expert → **Legend**) scale
 reaction time, aim error, utility usage, movement, and hearing range — with
 per-bot skill jitter so no two teammates play identically.
 
@@ -259,21 +262,21 @@ Every champion carries a unique perk, implemented in the combat sim:
 
 | Champion | Perk |
 | --- | --- |
-| Harry | Expelliarmus costs 50% less mana, recovers 60% faster |
+| Harry | Expelliarmus costs 40% less mana, recovers 45% faster |
 | Hermione | Recharge (R) refills twice as fast |
-| Ron | 25% less blast/fire damage |
+| Ron | 20% less blast/fire damage |
 | Luna | 60% flash resistance, radar pings linger +2s |
-| Dumbledore | Protego drains 40% less, 50% wider parry window |
-| McGonagall | Petrificus holds 40% longer, slot-3 hexes carry +1 charge |
-| Ginny | Bombarda blasts 25% wider, free Impedimenta each round |
-| Neville | Below 35% HP: +25% damage out, −15% damage in |
+| Dumbledore | Protego drains 35% less, 35% wider parry window |
+| McGonagall | Petrificus holds 30% longer, slot-3 hexes carry +1 charge |
+| Ginny | Bombarda blasts 20% wider, free Impedimenta each round |
+| Neville | Below 35% HP: +20% damage out, −12% damage in |
 | Snape | Sectumsempra replaces Stupefy — a bleeding bolt |
-| Bellatrix | Bolt hits Crucio-slow victims 25% for 1.5s |
-| Voldemort | Avada charges 35% faster, costs 20% less |
-| Draco | 20% discount on every purchase |
-| Lucius | Kills pay +150 G, living squadmates collect +50 G |
-| Greyback | Kills feed: +35 HP and +15% speed for 4s |
-| Umbridge | Hex hits brand victims on the squad radar 4s, Silencio +50% |
+| Bellatrix | Bolt hits slow victims by 30% for 1.2s |
+| Voldemort | Avada charges 28% faster, costs 15% less |
+| Draco | 15% discount on every purchase |
+| Lucius | Kills pay +125 G, living squadmates collect +50 G |
+| Greyback | Kills feed: +30 HP and +12% speed for 3.5s |
+| Umbridge | Hex hits brand victims on the squad radar 4s, Silencio +35% |
 | Wormtail | Silent footsteps, free Invisibility Cloak each round |
 
 ### Pick your lineups
@@ -305,14 +308,13 @@ Combat isn't just trading bolts — there's a defensive toolkit:
   **Perfect block:** raise it within a quarter-second of a bolt landing and the
   bolt is *parried* — reflected back at the caster with a gold flash. A parry
   kill is the flashiest play in the game.
-- **Expecto Patronum (slot 5, 500 G)** — conjure a glowing guardian wall ~8m
-  wide for 6 seconds. Enemy spells splash harmlessly against it; yours pass
+- **Expecto Patronum (slot 5, 450 G)** — conjure a glowing guardian wall ~8m
+  wide for 6.5 seconds. Enemy spells splash harmlessly against it; yours pass
   through. Cuts off a push, covers a dispel, walls off a retake.
-- **Petrificus Totalus (slot 3, 600 G)** — body-bind bolt: the victim locks up
-  as a stone statue for 1.6s (can't move, cast, or shield). A solid hit (18+
-  damage) shatters the bind early, so follow up fast or use the window to
-  reposition.
-- **Finite Incantatem (X, 250 G)** — self-cleanse that strips burn, bleed, and
+- **Petrificus Totalus (slot 3, 500 G)** — body-bind bolt: the victim locks up
+  as a stone statue for 1.45s (can't move, cast, or shield). A solid hit
+  shatters the bind early, so follow up fast or use the window to reposition.
+- **Finite Incantatem (X, 200 G)** — self-cleanse that strips burn, bleed, and
   slow, and clears most of a flash. Carry one against Incendio/Sectumsempra
   lineups.
 
@@ -343,8 +345,8 @@ Beyond spells, the shop sells equipment — some persistent, some one-shot:
 
 ### Serpensortia and loot drops
 
-- **Serpensortia (550 G, slot 5)** — conjures a snake that slithers after the
-  nearest enemy and strikes once for 24 + a slow. It has 30 HP and can be shot
+- **Serpensortia (500 G, slot 5)** — conjures a snake that slithers after the
+  nearest enemy and strikes once for 20 + a slow. It has 26 HP and can be shot
   down; bots will call it out and panic-fire at it.
 - **The fallen drop loot** — every kill drops the victim's wand plus a piece
   of their kit (a grenade or potion). Walk over a grenade/potion to scavenge

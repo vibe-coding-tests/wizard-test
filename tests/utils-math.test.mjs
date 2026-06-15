@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clamp, lerp, damp, angDiff, dist2D, fmtTime, fmt$, hexCss, shuffle, TAU, DEG } from '../src/utils.js';
+import {
+  clamp, lerp, damp, angDiff, dist2D, fmtTime, fmt$, hexCss, shuffle, TAU, DEG,
+  yawTo, randInt, choice, grand, uid,
+} from '../src/utils.js';
+
+// Run `fn` with Math.random pinned to a fixed value, then restore it.
+function withRandom(value, fn) {
+  const orig = Math.random;
+  Math.random = () => value;
+  try {
+    return fn();
+  } finally {
+    Math.random = orig;
+  }
+}
 
 test('TAU is 2π and DEG is π/180', () => {
   assert.ok(Math.abs(TAU - Math.PI * 2) < 1e-15);
@@ -73,4 +87,44 @@ test('shuffle returns all elements without modifying the original', () => {
   assert.equal(result.length, arr.length);
   assert.deepEqual([...result].sort((a, b) => a - b), arr);
   assert.deepEqual(arr, [1, 2, 3, 4, 5], 'original array is unchanged');
+});
+
+test('yawTo aims the camera from one point toward another', () => {
+  const at = { x: 0, z: 0 };
+  // looking down -z is yaw 0 in this convention
+  assert.ok(Math.abs(yawTo(at, { x: 0, z: -1 }) - 0) < 1e-9);
+  assert.ok(Math.abs(yawTo(at, { x: 1, z: 0 }) - (-Math.PI / 2)) < 1e-9);
+  assert.ok(Math.abs(yawTo(at, { x: -1, z: 0 }) - (Math.PI / 2)) < 1e-9);
+});
+
+test('randInt is inclusive of both endpoints', () => {
+  assert.equal(withRandom(0, () => randInt(1, 6)), 1, 'low end is reachable');
+  assert.equal(withRandom(0.999999, () => randInt(1, 6)), 6, 'high end is reachable');
+  assert.equal(withRandom(0.5, () => randInt(0, 0)), 0, 'a degenerate range yields the single value');
+});
+
+test('choice indexes into the array by the random draw', () => {
+  const arr = ['a', 'b', 'c', 'd'];
+  assert.equal(withRandom(0, () => choice(arr)), 'a');
+  assert.equal(withRandom(0.999999, () => choice(arr)), 'd');
+});
+
+test('grand stays within [-1, 1] and centers near zero on a fair coin', () => {
+  assert.equal(withRandom(0, () => grand()), -1, 'all-zero draws hit the floor');
+  assert.ok(Math.abs(withRandom(0.5, () => grand())) < 1e-9, 'mid draws sit at the center');
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < 5000; i++) {
+    const g = grand();
+    min = Math.min(min, g);
+    max = Math.max(max, g);
+  }
+  assert.ok(min >= -1 && max <= 1, `grand out of range: [${min}, ${max}]`);
+});
+
+test('uid hands out strictly increasing ids', () => {
+  const a = uid();
+  const b = uid();
+  const c = uid();
+  assert.ok(b > a && c > b, 'each call returns a larger id');
+  assert.equal(b - a, 1, 'ids increment by one');
 });

@@ -6,6 +6,7 @@ import { el, clamp, fmtTime, fmtKDA, hexCss, lerp } from './utils.js';
 import { keyLabel } from './input.js';
 
 const DEG_R = Math.PI / 180;
+const SPELL_BUY_ORDER = ['stupefy', 'sectum', 'avada', ...SLOT3, 'bombarda', ...SLOT5, 'protego'];
 
 // Command wheel slices, clockwise from the top. Ids are consumed by Game.command.
 export const WHEEL_CMDS = [
@@ -456,18 +457,18 @@ export class HUD {
   slotSpellFor(i) {
     const p = this.game.human;
     if (i === 1) return p.slot1();
-    if (i === 2) return p.owned.has('avada') ? 'avada' : null;
+    if (i === 2) return p.ownsUsable('avada') ? 'avada' : null;
     if (i === 3) {
       // show whichever hex is in hand, not just petrificus
       if (SLOT3.includes(p.curSpell)) return p.curSpell;
       return 'expelliarmus';
     }
-    if (i === 4) return p.owned.has('bombarda') ? 'bombarda' : null;
+    if (i === 4) return p.ownsUsable('bombarda') ? 'bombarda' : null;
     if (i === 5) {
-      const opts = SLOT5.filter((id) => p.owned.has(id));
+      const opts = SLOT5.filter((id) => p.ownsUsable(id));
       if (!opts.length) return null;
       if (opts.includes(p.curSpell)) return p.curSpell;
-      return opts.find((id) => p.ownsUsable(id)) || opts[0];
+      return opts[0];
     }
     return null;
   }
@@ -483,6 +484,7 @@ export class HUD {
       el('img', '', chip).src = spellIcon(eq.icon);
       if (eq.action) el('span', 'equip-key', chip, keyLabel(this.input.binds[eq.action]));
       if (eq.id === 'vest') el('span', 'equip-n', chip, `${Math.ceil(p.vestHP)}`);
+      else if (eq.id === 'broom') el('span', 'equip-n', chip, `${Math.max(0, p.broomFuel).toFixed(1)}s`);
       else if (eq.max > 1) el('span', 'equip-n', chip, `×${n}`);
     }
   }
@@ -627,7 +629,7 @@ export class HUD {
     const body = this.buyBody;
     body.innerHTML = '';
     const card = (opts) => {
-      const c = el('div', `buy-card${opts.disabled ? ' disabled' : ''}${opts.owned ? ' owned' : ''}`, body);
+      const c = el('div', `buy-card${opts.disabled ? ' disabled' : ''}${opts.owned ? ' owned' : ''}${opts.selectable ? ' selectable' : ''}`, body);
       const top = el('div', 'card-top', c);
       const ic = el('img', 'card-ico', top);
       ic.src = spellIcon(opts.icon);
@@ -640,18 +642,21 @@ export class HUD {
         for (const [label, frac, cls] of opts.stats) this.statBar(st, label, frac, cls);
       }
       el('div', 'card-desc', c, opts.desc || '');
-      if (!opts.disabled && !opts.owned && opts.onBuy) c.onclick = opts.onBuy;
+      if (!opts.disabled && opts.onBuy && (!opts.owned || opts.selectable)) c.onclick = opts.onBuy;
       return c;
     };
 
     if (this.buyTab === 'wands') {
       for (const w of WANDS) {
         const price = Math.round(w.price * p.priceMult());
+        const owned = p.ownedWands?.has(w.id) || p.wand.id === w.id;
+        const equipped = p.wand.id === w.id;
         card({
           icon: 'wand', name: w.name, role: w.id === p.prefWand ? '★ preferred' : 'Wand',
           price, desc: w.desc,
-          owned: p.wand.id === w.id, ownedLabel: 'EQUIPPED',
-          disabled: p.wand.id !== w.id && p.money < price,
+          owned, ownedLabel: equipped ? 'EQUIPPED' : 'SELECT',
+          selectable: owned && !equipped,
+          disabled: !owned && p.money < price,
           stats: [
             ['Power', w.power / 1.3, 'pow'],
             ['Cast speed', w.cast / 1.2, 'spd'],
@@ -662,7 +667,7 @@ export class HUD {
         });
       }
     } else if (this.buyTab === 'spells') {
-      for (const id of ['stupefy', 'sectum', 'avada', 'expelliarmus', 'petrificus', 'impedimenta', 'silencio', 'bombarda', 'lumos', 'fumos', 'incendio', 'patronum', 'serpensortia', 'protego']) {
+      for (const id of SPELL_BUY_ORDER) {
         const sp = SPELLS[id];
         if (sp.exclusive && p.charId !== sp.exclusive) continue;
         if (id === 'stupefy' && p.charId === 'snape') continue;
@@ -924,6 +929,7 @@ export class HUD {
     if (p.disarmT > 0) tags += `<span class="tag bad">DISARMED ${p.disarmT.toFixed(1)}</span>`;
     if (p.recharging > 0) tags += `<span class="tag mana">RECHARGING</span>`;
     if (p.cloakT > 0) tags += `<span class="tag">CLOAKED ${p.cloakT.toFixed(0)}</span>`;
+    if (p.flying) tags += `<span class="tag">FLYING ${Math.max(0, p.broomFuel).toFixed(1)}</span>`;
     if (p.slowT > 0) tags += `<span class="tag bad">SLOWED</span>`;
     if (p.burnT > 0) tags += `<span class="tag bad">BURNING</span>`;
     if (p.bleeds.length > 0) tags += `<span class="tag bad">BLEEDING</span>`;

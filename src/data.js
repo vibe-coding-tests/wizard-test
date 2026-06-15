@@ -510,22 +510,22 @@ export const wandById = (id) => WANDS.find((w) => w.id === id);
 // ------------------------------------------------------------- EQUIPMENT ---
 export const EQUIP_EFFECTS = {
   potion: { duration: 2.75, healPerSecond: 20 },
-  broom: { duration: 2.4, speedMult: 1.55 },
+  broom: { fuel: 4.5, speedMult: 1.55 },
   cloak: { duration: 5.2 },
-  apparate: { distance: 7.5 },
+  apparate: { distance: 8.0 },
   finite: {},
-  vest: { pool: 55, soak: 0.25 },
+  vest: { pool: 60, soak: 0.25 },
   felix: { slow: 0.5 },
   portkey: { channel: 1.2 },
 };
 
 export const EQUIPMENT = [
   { id: 'potion', name: 'Healing Potion', price: 300, action: 'potion', max: 1, icon: 'potion', desc: 'Restores 55 HP over 2.75s. Strong sustain, weak to burst.' },
-  { id: 'broom', name: 'Broomstick', price: 450, action: 'broom', max: 2, icon: 'broom', desc: 'Hold to FLY for up to 2.4s: steer where you look, Space climbs, Ctrl dives. Two mounts.' },
+  { id: 'broom', name: 'Broomstick', price: 500, action: 'broom', max: 1, icon: 'broom', desc: 'Mount to FLY: steer where you look, Space climbs, Ctrl dives. 4.5s of fuel per round — dismount to bank what is left and remount any time. Refuels each round.' },
   { id: 'cloak', name: 'Invisibility Cloak', price: 500, action: 'cloak', max: 1, icon: 'cloak', desc: 'Vanish for 5.2s. Casting breaks it.' },
-  { id: 'apparate', name: 'Apparition Charm', price: 450, action: 'apparate', max: 1, icon: 'blink', desc: 'Blink 7.5m in the direction you face. Once per round.' },
+  { id: 'apparate', name: 'Apparition Charm', price: 450, action: 'apparate', max: 1, icon: 'blink', desc: 'Blink 8m in the direction you face — outreaches your dash. Once per round.' },
   { id: 'finite', name: 'Finite Incantatem', price: 200, action: 'finite', max: 2, icon: 'ward', desc: 'Dispel your afflictions: fire, bleeding, slows, blinds, and polymorphs.' },
-  { id: 'vest', name: 'Dragonhide Vest', price: 700, action: null, max: 1, icon: 'vest', desc: 'Armor: takes 25% of every spell hit until it absorbs 55 damage. Survive and you keep it.' },
+  { id: 'vest', name: 'Dragonhide Vest', price: 700, action: null, max: 1, icon: 'vest', desc: 'Armor: takes 25% of every spell hit until it absorbs 60 damage. Survive and you keep it.' },
   { id: 'felix', name: 'Felix Felicis', price: 1000, action: null, max: 1, icon: 'luck', desc: 'Liquid luck: the next killing blow leaves you at 1 HP instead. One sip, one miracle.' },
   { id: 'portkey', name: 'Emergency Portkey', price: 350, action: 'portkey', max: 1, icon: 'portkey', desc: 'Channel 1.2s (interrupted by damage), then snap back to your spawn. One use.' },
 ];

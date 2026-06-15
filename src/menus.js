@@ -1,6 +1,6 @@
 // Menus: main, match setup (mode/map/team/character/wand/bots), settings with
 // keybinds + crosshair editor, pause, lock overlay, match end screen.
-import { CHARACTERS, WANDS, EQUIPMENT, EQUIP_EFFECTS, TEAM, TEAM_INFO, MAP_LIST, DIFFICULTIES, FORMATS, DISCIPLINES, SPELLS, ROUND } from './data.js';
+import { CHARACTERS, WANDS, EQUIPMENT, EQUIP_EFFECTS, TEAM, TEAM_INFO, MAP_LIST, DIFFICULTIES, FORMATS, DISCIPLINES, SPELLS, ROUND, SLOT3, SLOT5 } from './data.js';
 import { MAP_BUILDERS } from './maps/index.js';
 import { bakeRadar } from './mapbuilder.js';
 import { el, clamp, fmtKDA } from './utils.js';
@@ -135,8 +135,10 @@ export class Menus {
         for (const eq of EQUIPMENT) {
           human.equip[eq.id] = eq.max;
           if (eq.id === 'vest') human.vestHP = Math.max(human.vestHP, EQUIP_EFFECTS.vest.pool);
+          if (eq.id === 'broom') human.broomFuel = EQUIP_EFFECTS.broom.fuel;
         }
         human.wand = WANDS.find((w) => w.id === human.prefWand) || human.wand;
+        human.ownedWands?.add(human.wand.id);
         human.ensureValidSpell();
         game.hud.refreshEquip();
         game.hud.refreshBuy();
@@ -525,7 +527,7 @@ export class Menus {
       el('h3', 'sec-title', scroll, 'DEATHMATCH BANS');
       el('div', 'card-sub', scroll, 'Toggle out high-impact spells for balance experiments. Banned spells never appear in the warm-up loadout.');
       const banGrid = el('div', 'ban-grid', scroll);
-      const banIds = ['avada', 'bombarda', 'incendio', 'petrificus', 'impedimenta', 'silencio', 'patronum', 'serpensortia', 'episkey'];
+      const banIds = ['avada', 'bombarda', ...SLOT5, ...SLOT3.filter((id) => id !== 'expelliarmus')];
       const refreshBans = () => {
         for (const chip of banGrid.querySelectorAll('.ban-chip')) {
           chip.classList.toggle('sel', this.setup.dmBanned.includes(chip.dataset.id));

@@ -100,6 +100,7 @@ export class Bot {
     this.dodgeDir = 1;
     this.threatCd = 0;
     this.heard = null;      // last sound: {x,y,z,t,loud}
+    this.pain = null;       // direct hit clue: turn toward it, then confirm by sight
     this.saving = false;    // eco: hiding out the round to keep gear
     this.saveSpot = null;
     this.saveEvalT = rand(1, 3);
@@ -138,6 +139,7 @@ export class Bot {
     this.parryIntent = false;
     this.dodgeUntil = 0;
     this.heard = null;
+    this.pain = null;
     this.saving = false;
     this.saveSpot = null;
     this.order = null;
@@ -203,7 +205,7 @@ export class Bot {
     if (Math.random() < u * 0.4 && p.money > 1900) g.buy(p, 'spell', 'serpensortia');
     // gear by temperament: rushers grab brooms, lurkers love the cloak
     if (Math.random() < 0.55 && p.money > 1300) g.buy(p, 'equip', 'potion');
-    if (Math.random() < ai.aggro * 0.45 && p.money > 2000) g.buy(p, 'equip', 'broom');
+    if (p.equip.broom <= 0 && Math.random() < ai.aggro * 0.45 && p.money > 2000) g.buy(p, 'equip', 'broom');
     if (ai.lurk > 0.45 && Math.random() < ai.lurk * 0.55 && p.money > 2000) g.buy(p, 'equip', 'cloak');
     if ((ai.lurk > 0.45 || ai.aggro < 0.35 || p.disc?.id === 'phantom') && Math.random() < 0.35 && p.money > 1800) g.buy(p, 'equip', 'apparate');
     if (Math.random() < u * 0.5 && p.money > 1200) g.buy(p, 'equip', 'finite');
@@ -447,6 +449,15 @@ export class Bot {
     // roaming, trades and the default objective — but never an active fight
     if (this.applyOrder()) return;
 
+    const guardingPlantedRelic = this.isPostPlantAttacker();
+    const pain = this.freshPain();
+    if (pain) this.faceMemory(pain);
+    if (guardingPlantedRelic && pain && !this.isPostPlantPressure(pain)) {
+      ctrl.moveX = 0; ctrl.moveZ = 0;
+      ctrl.walkHeld = false;
+      return;
+    }
+
     // a teammate just died nearby: loyal wizards turn to trade the kill,
     // lurkers note it and keep flanking
     const trade = this.tradeOpportunity();
@@ -458,7 +469,7 @@ export class Bot {
     }
 
     // hunt the corner where a target slipped away, sweeping the angle
-    if (this.search) {
+    if (this.search && (!guardingPlantedRelic || this.isPostPlantPressure(this.search))) {
       const s = this.search;
       const close = Math.hypot(p.pos.x - s.x, p.pos.z - s.z) < 2.2;
       if (g.time > s.until || (close && g.time > s.until - 1.5)) {
@@ -473,7 +484,8 @@ export class Bot {
     }
 
     const mem = this.freshMemory();
-    if (mem && this.role.type !== 'defend' && !p.hasRelic && !this.saving) {
+    const shouldPressureMemory = mem && (!guardingPlantedRelic || this.isPostPlantPressure(mem));
+    if (mem && this.role.type !== 'defend' && !p.hasRelic && !this.saving && shouldPressureMemory) {
       // lurkers close in on known enemies silently — no footsteps to warn them
       ctrl.walkHeld = this.ai.lurk > 0.45 && Math.hypot(p.pos.x - mem.x, p.pos.z - mem.z) < 26;
       this.goTo(mem.x, mem.y, mem.z, 1.6);
@@ -732,9 +744,65 @@ export class Bot {
     }
   }
 
+  onDamaged(attacker) {
+    const p = this.p;
+    const g = this.game;
+    if (!attacker || !attacker.alive || attacker.team === p.team) return;
+    this.pain = {
+      enemy: attacker,
+      x: attacker.pos.x, y: attacker.pos.y, z: attacker.pos.z,
+      t: g.time,
+    };
+    this.aware.set(attacker.id, Math.max(this.aware.get(attacker.id) || 0, 0.82));
+    this.search = {
+      x: attacker.pos.x, y: attacker.pos.y, z: attacker.pos.z,
+      until: g.time + 3.4 + this.skill.iq * 1.4,
+      sweepDir: Math.random() < 0.5 ? 1 : -1,
+    };
+    this.ignoreUntil = 0;
+    this.faceMemory(this.pain);
+    this.thinkT = Math.min(this.thinkT, 0.03);
+  }
+
+  freshPain() {
+    if (!this.pain || this.game.time - this.pain.t > 4.2) return null;
+    if (!this.pain.enemy?.alive) return null;
+    return this.pain;
+  }
+
+  faceMemory(mem) {
+    const p = this.p;
+    const eye = p.eyePos();
+    this.aimYaw = yawTo(eye, V.set(mem.x, mem.y ?? p.pos.y, mem.z));
+    const dh = Math.hypot(mem.x - eye.x, mem.z - eye.z);
+    this.aimPitch = clamp(Math.atan2((mem.y ?? p.pos.y + 1.1) - eye.y, Math.max(dh, 0.01)), -0.5, 0.5);
+  }
+
+  isPostPlantPressure(mem) {
+    const g = this.game;
+    if (!this.isPostPlantAttacker() || !mem) return false;
+    const age = g.time - (mem.t ?? g.time);
+    if (age > 6) return false;
+    const relicD = Math.hypot(mem.x - g.relic.pos.x, mem.z - g.relic.pos.z);
+    if (relicD < 15) return true;
+    const pain = this.freshPain();
+    if (!pain || Math.hypot(mem.x - pain.x, mem.z - pain.z) >= 3.5) return false;
+    const meD = Math.hypot(mem.x - this.p.pos.x, mem.z - this.p.pos.z);
+    return meD < 28 || relicD < 22;
+  }
+
+  isPostPlantEnemyPressure(enemy) {
+    const g = this.game;
+    if (!this.isPostPlantAttacker() || !enemy) return false;
+    if (g.relic.defuser === enemy) return true;
+    if (Math.hypot(enemy.pos.x - g.relic.pos.x, enemy.pos.z - g.relic.pos.z) < 15) return true;
+    const pain = this.freshPain();
+    return !!pain && pain.enemy === enemy;
+  }
+
   tradeOpportunity() {
     const p = this.p;
-    if (this.ai.team < 0.35 || p.hasRelic || this.saving) return null;
+    if (this.ai.team < 0.35 || p.hasRelic || this.saving || this.isPostPlantAttacker()) return null;
     for (const d of this.game.recentDeaths) {
       if (d.team !== p.team || this.game.time - d.t > 3) continue;
       const dist = Math.hypot(p.pos.x - d.x, p.pos.z - d.z);
@@ -804,6 +872,8 @@ export class Bot {
     const ep = enemy.eyePos();
     const dist = eye.distanceTo(ep);
     const oriented = g.time >= this.orientAt;
+    const guardingPlantedRelic = this.isPostPlantAttacker();
+    const postPlantEnemyPressure = this.isPostPlantEnemyPressure(enemy);
 
     // panic check: cowards bail out of losing duels, berserkers never do
     const panicHp = 14 + 30 * (1 - ai.aggro);
@@ -869,7 +939,7 @@ export class Bot {
     const sniper = useAvada || p.curSpell === 'avada';
     const fireRange = sniper ? 220 : (spell.kind === 'lob' ? 34 : 42);
     const commitRange = sniper ? 220 : ai.range * 1.5 + 6;
-    if (dist > commitRange && this.role.type !== 'defend' && this.retreating <= 0 &&
+    if (dist > commitRange && this.role.type !== 'defend' && (!guardingPlantedRelic || postPlantEnemyPressure) && this.retreating <= 0 &&
         p.health > 32 && spell.kind !== 'lob' && !p.charge && g.time >= this.dodgeUntil) {
       ctrl.castHeld = false;
       this.charging = false;
@@ -937,7 +1007,7 @@ export class Bot {
       if (p.equip.broom > 0 && !p.flying) p.useEquip('broom');
       // desperate and far from help: rip the emergency portkey
       if (p.equip.portkey > 0 && p.portkeyT <= 0 && p.health < 20 && dist > 12) p.useEquip('portkey');
-    } else if (ai.aggro > 0.85) {
+    } else if (ai.aggro > 0.85 && !guardingPlantedRelic) {
       // berserker: always closing — and blinks the gap when it's wide open
       if (dist > ai.range) {
         mx += toE.x * 0.9; mz += toE.z * 0.9;
@@ -956,10 +1026,25 @@ export class Bot {
       else if (dist > pref * 1.6 && !useAvada) {
         const push = 0.3 + ai.aggro * 0.6;
         mx += toE.x * push; mz += toE.z * push;
-      } else if (this.role.type === 'attack' && dist > pref) {
+      } else if (this.role.type === 'attack' && !guardingPlantedRelic && dist > pref) {
         // drift toward preferred range so duels resolve instead of stalling
         const drift = 0.2 + ai.aggro * 0.3;
         mx += toE.x * drift; mz += toE.z * drift;
+      }
+    }
+    if (guardingPlantedRelic && this.retreating <= 0) {
+      const relic = g.relic;
+      const anchor = this.postPlantHoldSpot();
+      const ax = anchor.x - p.pos.x;
+      const az = anchor.z - p.pos.z;
+      const anchorD = Math.hypot(ax, az);
+      const enemyRelicD = Math.hypot(enemy.pos.x - relic.pos.x, enemy.pos.z - relic.pos.z);
+      const enemyOnRelic = relic.defuser === enemy || enemyRelicD < 4.2;
+      if ((enemyOnRelic || postPlantEnemyPressure) && dist > 3) {
+        mx += toE.x * 0.9; mz += toE.z * 0.9;
+      } else if (anchorD > 2.6) {
+        mx = ax / anchorD * 0.95 + perp.x * this.strafeDir * sk.strafe * 0.25;
+        mz = az / anchorD * 0.95 + perp.z * this.strafeDir * sk.strafe * 0.25;
       }
     }
     // reflex dodge: hard sidestep off an incoming line — skilled wizards
@@ -1126,6 +1211,19 @@ export class Bot {
     return best;
   }
 
+  isPostPlantAttacker() {
+    const g = this.game;
+    return g.mode !== 'dm' && g.relic.state === 'planted' && g.attackingTeam === this.p.team;
+  }
+
+  postPlantHoldSpot() {
+    const relic = this.game.relic;
+    const spot = this.holdSpot;
+    const spotD = spot ? Math.hypot(spot.x - relic.pos.x, spot.z - relic.pos.z) : Infinity;
+    if (!spot || spotD > 16) this.holdSpot = this.pickHoldNear(relic.pos, 6, 13);
+    return this.holdSpot;
+  }
+
   // ------------------------------------------------------------ objective ---
   objective() {
     const p = this.p;
@@ -1173,8 +1271,7 @@ export class Bot {
     if (isAttacker) {
       // planted: defend the relic
       if (relic.state === 'planted') {
-        const spot = this.holdSpot || this.pickHoldNear(relic.pos, 6, 13);
-        this.holdSpot = spot;
+        const spot = this.postPlantHoldSpot();
         this.holdAt(spot, yawTo(p.pos, relic.pos) + Math.PI);
         return;
       }

@@ -288,17 +288,23 @@ Bellatrix to bind you mid-push.
 
 Beyond spells, the shop sells equipment — some persistent, some one-shot:
 
-- **Dragonhide Vest (650 G)** — armor: soaks 30% of every hit until it has
+- **Dragonhide Vest (700 G)** — armor: soaks 25% of every hit until it has
   absorbed 60 damage, then shatters. Survive the round and you keep it.
-- **Felix Felicis (800 G)** — liquid luck: the next killing blow leaves you at
+- **Felix Felicis (1000 G)** — liquid luck: the next killing blow leaves you at
   1 HP instead. One sip, one miracle.
-- **Emergency Portkey (450 G, V)** — channel 1.4s (any damage interrupts),
+- **Emergency Portkey (350 G, V)** — channel 1.2s (any damage interrupts),
   then snap back to your spawn. A lurker's escape hatch.
-- **Broomstick (400 G, C)** — short flight: ~2.2s of fuel per mount, steer
-  where you look, Space climbs, Ctrl dives. Casting mid-air is wildly
-  inaccurate. Two mounts per purchase.
-- **Healing Potion (Q)**, **Invisibility Cloak (F)**, **Apparition Charm
-  (G)**, and **Finite Incantatem (X)** round out the belt.
+- **Broomstick (500 G, C)** — a flight tank, not a one-shot: 4.5s of fuel that
+  refills every round. Steer where you look, Space climbs, Ctrl dives; dismount
+  to bank the fuel you didn't burn and remount whenever. Casting mid-air is
+  wildly inaccurate. Bought once, kept until you die.
+- **Healing Potion (300 G, Q)** — restores 55 HP over 2.75s; strong sustain,
+  weak to burst.
+- **Invisibility Cloak (500 G, F)** — vanish for 5.2s; casting breaks it.
+- **Apparition Charm (450 G, G)** — blink 8m where you face, outreaching the
+  intrinsic dash; once per round.
+- **Finite Incantatem (200 G, X)** — dispel your own fire, bleeds, slows,
+  blinds, and polymorphs; two charges.
 
 ### Serpensortia and loot drops
 

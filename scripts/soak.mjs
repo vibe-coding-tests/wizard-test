@@ -532,6 +532,7 @@ const v3 = await page.evaluate(async () => {
 
   // D) broom flight: mounting and holding jump gains altitude, fuel runs dry
   h.equip.broom = 1;
+  h.broomFuel = 2.4;
   h.useEquip('broom');
   const y0 = h.pos.y;
   h.ctrl.jump = true;

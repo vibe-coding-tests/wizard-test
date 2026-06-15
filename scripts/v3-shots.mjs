@@ -83,9 +83,9 @@ await page.evaluate(() => {
   const sp = g.world.spawns.order[0];
   const gy = g.world.groundY(sp.x, sp.z, 30);
   h.pos.set(sp.x, gy + 6, sp.z); h.yaw = Math.PI / 4; h.pitch = -0.35;
-  h.equip.broom = 2;
+  h.equip.broom = 1;
+  h.broomFuel = 99;
   h.useEquip('broom');
-  h.broomT = 99;
   for (let i = 0; i < 20; i++) g.update(0.016);
 });
 await page.waitForTimeout(400);

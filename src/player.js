@@ -40,6 +40,7 @@ export class Player {
     this.mana = this.stats.mana;
 
     this.wand = wandById('training');
+    this.ownedWands = new Set();
     this.owned = new Set();
     this.charges = {};
     this.equip = { potion: 0, broom: 0, cloak: 0, apparate: 0 };
@@ -61,7 +62,7 @@ export class Player {
     this.lastHit = null;  // {x,y,z,power,t} → corpse impulse direction
     this.wandProp = null; // physical wand lying on the ground while disarmed
     this.fxAcc = 0; this.dripAcc = 0;
-    this.healT = 0; this.broomT = 0; this.cloakT = 0;
+    this.healT = 0; this.broomFuel = 0; this.cloakT = 0; // broomFuel: shared flight tank, refills each round
     this.bloom = 0;       // recoil spread, grows per cast and decays
     this.punchPitch = 0;  // camera view-punch (visual recoil, decays)
     this.punchYaw = 0;
@@ -92,6 +93,7 @@ export class Player {
 
   resetLoadout() {
     this.wand = wandById('training');
+    this.ownedWands = new Set([this.wand.id]);
     this.owned = new Set([this.slot1(), 'expelliarmus', 'protego']);
     this.charges = {};
     this.equip = { potion: 0, broom: 0, cloak: 0, apparate: 0, finite: 0, vest: 0, felix: 0, portkey: 0 };
@@ -290,13 +292,11 @@ export class Player {
       g.effects.healFX(this);
     } else if (action === 'broom') {
       if (this.flying) {
-        this.flying = false; this.broomT = 0; // dismount
-      } else if (this.equip.broom > 0) {
-        this.equip.broom--;
-        this.flying = true;
-        this.broomT = EQUIP_EFFECTS.broom.duration; // flight fuel
+        this.flying = false; // dismount — unspent fuel stays banked in broomFuel
+      } else if (this.equip.broom > 0 && this.broomFuel > 0.05) {
+        this.flying = true; // draw from the shared fuel tank
         g.audio.play('broom', { pos: this.pos });
-        if (this.isHuman) g.hud.notice('Broom mounted — Space climbs, Ctrl dives', '');
+        if (this.isHuman) g.hud.notice(`Broom mounted (${this.broomFuel.toFixed(1)}s) — Space climbs, Ctrl dives`, '');
       } else return;
     } else if (action === 'portkey' && this.equip.portkey > 0 && this.portkeyT <= 0) {
       this.portkeyT = EQUIP_EFFECTS.portkey.channel;
@@ -492,9 +492,9 @@ export class Player {
       }
     }
     if (this.flying) {
-      this.broomT -= dt;
+      this.broomFuel -= dt;
       g.effects.broomTick(this, dt);
-      if (this.broomT <= 0 || this.freezeT > 0) { this.flying = false; this.broomT = 0; }
+      if (this.broomFuel <= 0 || this.freezeT > 0) { this.flying = false; this.broomFuel = Math.max(0, this.broomFuel); if (this.isHuman) g.hud.refreshEquip(); }
     }
     if (this.portkeyT > 0) {
       this.portkeyT -= dt;
@@ -629,12 +629,13 @@ export class Player {
     this.burnT = 0; this.staggerT = 0; this.freezeT = 0; this.lastHit = null;
     this.feralT = 0; this.taggedT = 0; this.taggedBy = null;
     if (this.wandProp) this.game.effects.removeWandDrop(this.wandProp, false);
-    this.healT = 0; this.broomT = 0; this.cloakT = 0;
+    this.healT = 0; this.cloakT = 0;
     this.bloom = 0; this.punchPitch = 0; this.punchYaw = 0;
     this.spawnProtT = 0;
     this.dashCD = 0; this.dashT = 0; this.dashIframeT = 0; this.parryBuffT = 0;
     this.flying = false; this.portkeyT = 0; this.walking = false;
     if (this.equip.vest > 0 && this.vestHP <= 0) this.vestHP = EQUIP_EFFECTS.vest.pool; // fresh vest charges on spawn
+    if (this.equip.broom > 0) this.broomFuel = EQUIP_EFFECTS.broom.fuel; // top off the flight tank each round
     this.hasRelic = false;
     this.deathInfo = null;
     this.hitLog.clear();

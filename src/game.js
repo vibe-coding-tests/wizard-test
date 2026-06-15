@@ -260,6 +260,7 @@ export class Game {
     p.resetLoadout();
     p.roundPerks();
     p.wand = wandById('holly');
+    p.ownedWands.add(p.wand.id);
     const giveSpell = (id, charges = null) => {
       if (this.dmBanned.has(id)) return;
       p.owned.add(id);
@@ -318,8 +319,13 @@ export class Game {
     if (kind === 'wand') {
       const w = wandById(id);
       if (!w || p.wand.id === id) return false;
-      price = w.price;
-      apply = () => { p.wand = w; };
+      p.ownedWands ||= new Set([p.wand.id]);
+      const owned = p.ownedWands.has(id);
+      price = owned ? 0 : w.price;
+      apply = () => {
+        p.ownedWands.add(id);
+        p.wand = w;
+      };
     } else if (kind === 'spell') {
       const sp = SPELLS[id];
       if (!sp) return false;
@@ -337,6 +343,7 @@ export class Game {
       apply = () => {
         p.equip[id] = Math.min(eq.max, p.equip[id] + 1);
         if (id === 'vest') p.vestHP = EQUIP_EFFECTS.vest.pool;
+        if (id === 'broom') p.broomFuel = EQUIP_EFFECTS.broom.fuel;
       };
     }
     price = Math.round(price * (kind === 'equip' ? p.equipPriceMult() : p.priceMult()));
@@ -418,7 +425,11 @@ export class Game {
       if (victim.bot) victim.bot.thinkT = Math.min(victim.bot.thinkT, 0.03); // pain wakes bots
       // silent ticks (bleed/burn DOTs) must not live-track the attacker
       // through walls for the whole duration — only direct hits reveal
-      if (!silent) this.see(victim.team, attacker);
+      if (!silent) {
+        victim.lastAttacker = attacker;
+        victim.bot?.onDamaged?.(attacker);
+        this.see(victim.team, attacker);
+      }
     }
     if (victim.isHuman) {
       this.hud.painFlash(clamp(amount / 60, 0.15, 0.8));
@@ -477,7 +488,7 @@ export class Game {
       if (this.human.team === this.attackingTeam) this.hud.notice('The Relic was dropped!', 'obj');
     }
 
-    this.spawnDrops(victim);
+    this.spawnDrops(victim, attacker);
 
     const selfKill = attacker === victim;
     if (!selfKill && attacker) {
@@ -934,9 +945,15 @@ export class Game {
 
   // --------------------------------------------------------------- drops ---
   // The fallen leave their wand and a piece of kit where they died.
-  spawnDrops(victim) {
-    if (this.mode === 'dm') return;
+  spawnDrops(victim, attacker = null) {
     const jitter = () => rand(-0.7, 0.7);
+    if (this.mode === 'dm') {
+      const enemyKill = attacker && attacker !== victim && attacker.team !== victim.team;
+      if (enemyKill && !this.dmBanned.has('potion') && victim.equip.potion > 0) {
+        this.addDrop({ kind: 'heal', id: 'potion', name: 'Healing Potion', expiresAt: this.time + 18 }, victim.pos.x + jitter(), victim.pos.z + jitter());
+      }
+      return;
+    }
     if (victim.wand.price > 0) {
       this.addDrop({ kind: 'wand', id: victim.wand.id, name: victim.wand.name }, victim.pos.x + jitter(), victim.pos.z + jitter());
     }
@@ -960,6 +977,11 @@ export class Game {
   updateDrops(dt) {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
+      if (d.expiresAt && this.time >= d.expiresAt) {
+        this.effects.removeDropMesh(d.mesh);
+        this.drops.splice(i, 1);
+        continue;
+      }
       d.bobT += dt;
       d.mesh.position.y = d.y + 0.3 + Math.sin(d.bobT * 2.2) * 0.07;
       d.mesh.rotation.y += dt * 1.4;
@@ -989,10 +1011,11 @@ export class Game {
       if (!wants || p.wand.id === d.id) return false;
       const old = p.wand;
       p.wand = w;
+      p.ownedWands?.add(w.id);
       // leave your old wand behind in exchange
       if (old.price > 0) this.addDrop({ kind: 'wand', id: old.id, name: old.name }, d.x, d.z);
       this.audio.play('wand_pickup', { pos: p.pos, vol: 0.9 });
-      if (p.isHuman) this.hud.notice(`Took the ${w.name}`, 'good');
+      if (p.isHuman) { this.hud.notice(`Took the ${w.name}`, 'good'); this.hud.refreshBuy?.(); }
       return true;
     }
     if (d.kind === 'spell') {
@@ -1001,15 +1024,35 @@ export class Game {
       p.owned.add(d.id);
       p.charges[d.id] = (p.charges[d.id] || 0) + 1;
       this.audio.play('wand_pickup', { pos: p.pos, vol: 0.7 });
-      if (p.isHuman) { this.hud.notice(`Scavenged ${sp.name}`, 'good'); this.hud.refreshEquip?.(); }
+      if (p.isHuman) { this.hud.notice(`Scavenged ${sp.name}`, 'good'); this.hud.refreshEquip?.(); this.hud.refreshBuy?.(); }
+      return true;
+    }
+    if (d.kind === 'heal') {
+      const eq = equipById(d.id);
+      if (!eq) return false;
+      const canHeal = p.health < p.stats.hp;
+      const canCarry = (p.equip[d.id] || 0) < eq.max;
+      if (!canHeal && !canCarry) return false;
+      if (canHeal) {
+        p.healT = Math.max(p.healT, EQUIP_EFFECTS.potion.duration);
+        this.effects.healFX(p);
+        if (p.isHuman) this.hud.notice('Potion pickup — healing', 'good');
+      } else {
+        p.equip[d.id]++;
+        if (p.isHuman) this.hud.notice(`Scavenged ${eq.name}`, 'good');
+      }
+      this.audio.play('wand_pickup', { pos: p.pos, vol: 0.7 });
+      if (p.isHuman) { this.hud.refreshEquip(); this.hud.refreshBuy?.(); }
       return true;
     }
     if (d.kind === 'equip') {
       const eq = equipById(d.id);
       if (p.equip[d.id] >= eq.max) return false;
       p.equip[d.id]++;
+      if (d.id === 'vest') p.vestHP = EQUIP_EFFECTS.vest.pool;
+      if (d.id === 'broom') p.broomFuel = EQUIP_EFFECTS.broom.fuel;
       this.audio.play('wand_pickup', { pos: p.pos, vol: 0.7 });
-      if (p.isHuman) { this.hud.notice(`Scavenged ${eq.name}`, 'good'); this.hud.refreshEquip(); }
+      if (p.isHuman) { this.hud.notice(`Scavenged ${eq.name}`, 'good'); this.hud.refreshEquip(); this.hud.refreshBuy?.(); }
       return true;
     }
     return false;

@@ -750,6 +750,8 @@ tr.dead .sb-dot { color: #555; }
 .buy-card.disabled { opacity: 0.45; cursor: not-allowed; }
 .buy-card.disabled:hover { border-color: var(--line); transform: none; }
 .buy-card.owned { border-color: #3f7a4f; cursor: default; }
+.buy-card.owned.selectable { cursor: pointer; }
+.buy-card.owned.selectable:hover { border-color: var(--gold); transform: translateY(-1px); }
 .card-top { display: flex; align-items: center; gap: 9px; }
 .card-ico { width: 26px; height: 26px; flex-shrink: 0; }
 .card-titles { flex: 1; min-width: 0; }

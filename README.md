@@ -10,6 +10,10 @@ battlegrounds.
 Built with Three.js + Vite. All textures, sounds, and announcer stingers are
 synthesized at runtime — no CDN or external assets.
 
+> **Note:** This repo exists primarily as a testbed for the Cursor agent and
+> its long-running harness setup. The game is the workload; the real point is
+> exercising the agent over a large, evolving codebase.
+
 ## Run it
 
 ```bash
